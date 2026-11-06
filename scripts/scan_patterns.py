@@ -27,6 +27,33 @@ INFRA_DIRS = {"ansible", "terraform", "infra", "infrastructure", "deploy", "depl
 BUILD_DIRS = {"public", "_site", "out", "dist", "build", "site", "resources/_gen"}
 VENDOR_DIRS = {"vendor", "themes", "third_party", "third-party", "external"}
 
+SSG_CONFIGS = ("hugo.toml", "hugo.yaml", "hugo.json", "_config.yml", ".eleventy.js",
+               "eleventy.config.js", "mkdocs.yml")
+# public/ and site/ hold generated output for a static-site generator, but source for
+# CRA, Vite and Next: public/index.html carries <html lang>, the title and the viewport meta.
+GENERATED_ONLY_BY_SSG = {"public", "site"}
+
+
+def ssg_generates_public(root):
+    """True when a static-site generator in this repo writes into public/ or site/."""
+    # ponytail: marker sniff, not a full SSG probe; add generators as they turn up.
+    if any((root / name).exists() for name in SSG_CONFIGS):
+        return True
+    cfg = root / "config.toml"
+    try:
+        return cfg.exists() and "baseURL" in cfg.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return False
+
+
+def file_size(p):
+    """Size in bytes, or None when the path cannot be stat'ed (dangling symlink, permissions)."""
+    try:
+        return p.stat().st_size
+    except OSError:
+        return None
+
+
 
 def gitignored_dirs(root: Path):
     out = set()
@@ -152,15 +179,19 @@ SCRIPT_PATTERNS = [
 
 def iter_files(root: Path, include_infra: bool):
     build = gitignored_dirs(root) | BUILD_DIRS
+    if not ssg_generates_public(root):
+        build -= GENERATED_ONLY_BY_SSG
     vendor = submodule_paths(root) | VENDOR_DIRS
     for dirpath, dirnames, filenames in os.walk(root):
         rel = Path(dirpath).relative_to(root).as_posix()
         dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and (not d.startswith(".") or d == ".storybook")
                        and (f"{rel}/{d}".lstrip("./") not in build) and (rel != "." and rel != "" or d not in build)]
-        if not include_infra and any(seg in INFRA_DIRS for seg in rel.split("/") if seg):
-            continue
         segs = [s for s in rel.split("/") if s and s != "."]
-        is_vendor = any("/".join(segs[:i]) in vendor or segs[i - 1] in VENDOR_DIRS for i in range(1, len(segs) + 1))
+        # Top level only: src/pages/roles/ is an RBAC screen, not Ansible roles.
+        if not include_infra and segs and segs[0] in INFRA_DIRS:
+            continue
+        is_vendor = bool(segs) and (segs[0] in VENDOR_DIRS
+                                    or any("/".join(segs[:i]) in vendor for i in range(1, len(segs) + 1)))
         for f in filenames:
             yield Path(dirpath) / f, is_vendor
 
@@ -200,7 +231,8 @@ def main():
             txt = read(p)
             if EMBED_RE.search(txt):
                 kind = "markup"
-        if not kind or p.stat().st_size > 3_000_000:
+        size = file_size(p)
+        if not kind or size is None or size > 3_000_000:
             continue
         txt = read(p)
         rel = p.relative_to(root).as_posix()
