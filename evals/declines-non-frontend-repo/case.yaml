@@ -1,0 +1,8 @@
+schema_version: "1.1"
+name: declines-non-frontend-repo
+context:
+  scaffold_script: place-files.sh
+expected_outcome: |
+  The repo is a Python CLI with no user interface. Claude says so (in Dutch), does not run
+  the audit workflow or write a report, and asks what the user wants audited (a related
+  frontend, CLI output accessibility, or something else) in one short message.

@@ -1,0 +1,24 @@
+schema_version: "1.1"
+name: full-audit-fixture-site
+context:
+  scaffold_script: place-files.sh
+expected_outcome: |
+  A full audit in Dutch: `.a11y-audit/REPORT.md` (plus stack profile and findings files)
+  with three tiers, a score now and after each tier, a persona section with a task matrix,
+  and a WCAG coverage matrix that marks runtime-dependent criteria as not tested.
+  The seeded issues are found and land in the right tier. Tier 1 (invisible): missing
+  html lang; identical page titles; zoom blocked in the viewport meta; logo image without
+  alt; hamburger div with onclick; carousel arrows as spans; hero heading as a div and
+  heading levels jumping to h4/h5; `*:focus { outline: none }`; no skip link under a
+  120px sticky header; social links without an accessible name; carousel autoplay with no
+  reduced-motion handling; "Verstuur" as an anchor with href="#"; paste blocked on the
+  password field (3.3.8); email field type=text without autocomplete (1.3.5); fake
+  checkbox span (not focusable, no state); cookie modal without dialog semantics or focus
+  management; success message not announced (no live region) and cleared after 2 s;
+  errors shown by red border only. Tier 2 (subtle visible): muted text #9a9a9a on white
+  (2.81:1) with a lightness-only replacement computed by contrast.py; white text on the
+  brand orange #ff6b00 button (2.86:1) with a darker variant; status dots colour-only
+  needing an icon/text; 13px root font size; visible labels replacing placeholder-only
+  fields; a pause control for the carousel; "Lees meer" links made specific. The report
+  also lists positives (main landmark, nav aria-label, real submit button in newsletter
+  form, slides with alt) and recommends no overlay widget.

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Site</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <a href="/"><img src="img/logo.png" class="logo"></a>
+    <div class="menu-btn" onclick="toggleMenu()">☰</div>
+    <nav aria-label="Hoofdmenu" id="menu" class="menu">
+      <a href="index.html">Home</a>
+      <a href="projecten.html">Projecten</a>
+      <a href="contact.html" class="active">Contact</a>
+    </nav>
+  </header>
+
+  <main>
+    <h1>Contact</h1>
+    <p>Vul het formulier in, wij reageren binnen één werkdag.</p>
+
+    <form id="contact-form" novalidate>
+      <div class="field">
+        <input type="text" id="name" placeholder="Naam *">
+      </div>
+      <div class="field">
+        <input type="text" id="email" placeholder="E-mailadres *">
+      </div>
+      <div class="field">
+        <input type="text" id="phone" placeholder="Telefoonnummer">
+      </div>
+      <div class="field">
+        <textarea id="message" placeholder="Uw bericht *"></textarea>
+      </div>
+      <div class="field">
+        <input type="password" id="portal-password" placeholder="Portaalwachtwoord (optioneel)" onpaste="return false">
+      </div>
+      <div class="field checkbox">
+        <span class="fake-checkbox" id="agree" onclick="toggleAgree()"></span>
+        <span>Ik ga akkoord met de voorwaarden</span>
+      </div>
+      <p class="muted small">Velden met een <span class="required">*</span> zijn verplicht.</p>
+      <a href="#" class="btn btn-primary" onclick="submitContact(); return false;">Verstuur</a>
+      <div id="form-result"></div>
+    </form>
+  </main>
+
+  <footer>
+    <p class="muted small">© 2026 Example B.V.</p>
+  </footer>
+  <script src="app.js"></script>
+</body>
+</html>

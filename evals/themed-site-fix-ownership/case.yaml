@@ -1,0 +1,17 @@
+schema_version: "1.1"
+name: themed-site-fix-ownership
+context:
+  scaffold_script: place-files.sh
+expected_outcome: |
+  A mini or lean audit of a themed Hugo site where the theme is an off-limits submodule.
+  The detector reports the theme as vendored and the project as tiny; the stack profile
+  records what is writable (layouts/ render hooks, assets/css/custom.css, i18n/, hugo.toml)
+  and what is not (themes/paper). Every finding carries fix.ownership. Theme defects get
+  override (the missing html lang and the logo alt cannot be fixed from the project
+  without copying templates, so they are upstream or accepted with the CLAUDE.md rule as
+  reason; the search button's icon-only name can be improved via i18n only if the theme
+  reads it, otherwise upstream); project defects are project (the render-heading anchor
+  "#" polluting heading names, outline: none, the --link colour failing 3 to 1 against
+  body text and links without underline, --muted contrast). No fix recommends editing
+  themes/paper or copying its templates. The report lists upstream and accepted
+  exceptions separately per tier.

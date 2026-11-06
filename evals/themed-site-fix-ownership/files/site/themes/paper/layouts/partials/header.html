@@ -1,0 +1,7 @@
+<header>
+  <a href="/"><img src="/logo.png"></a>
+  <nav>
+    {{ range .Site.Menus.main }}<a href="{{ .URL }}">{{ .Name }}</a>{{ end }}
+  </nav>
+  <button class="search-toggle" title="{{ i18n "search" }}"><svg width="16" height="16"><circle cx="8" cy="8" r="6"/></svg></button>
+</header>

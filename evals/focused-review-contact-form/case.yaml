@@ -1,0 +1,13 @@
+schema_version: "1.1"
+name: focused-review-contact-form
+context:
+  scaffold_script: place-files.sh
+expected_outcome: |
+  Focused-review mode: no 15-agent workflow and no full report file; a concise answer in
+  Dutch, still organised in the three tiers. It covers: placeholder-only inputs without
+  labels (tier 1 programmatic label, tier 2 visible labels), email as type=text with no
+  autocomplete, paste blocked on the password field, the fake checkbox span that is not
+  focusable and has no state, "Verstuur" as an anchor with href="#", errors shown only by
+  a red border with no text or announcement, success message not announced and cleared
+  after 2 seconds, required indicated only by a red asterisk colour and placeholder. Fixes
+  are concrete HTML/JS snippets.

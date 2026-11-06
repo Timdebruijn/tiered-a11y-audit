@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Site</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <a href="/"><img src="img/logo.png" class="logo"></a>
+    <div class="menu-btn" onclick="toggleMenu()">☰</div>
+    <nav aria-label="Hoofdmenu" id="menu" class="menu">
+      <a href="/" class="active">Home</a>
+      <a href="projecten.html">Projecten</a>
+      <a href="contact.html">Contact</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="h1">Wij bouwen betrouwbare platforms</div>
+      <p class="muted">Infrastructuur, Kubernetes en automatisering voor organisaties die niet mogen uitvallen.</p>
+      <a class="btn btn-primary" href="contact.html">Neem contact op</a>
+    </section>
+
+    <section class="carousel" id="carousel">
+      <div class="slide active"><img src="img/slide1.jpg" alt="Slide 1"><p>Managed Kubernetes</p></div>
+      <div class="slide"><img src="img/slide2.jpg" alt="Slide 2"><p>Monitoring 24/7</p></div>
+      <div class="slide"><img src="img/slide3.jpg" alt="Slide 3"><p>Sovereign hosting</p></div>
+      <span class="arrow prev" onclick="prevSlide()">‹</span>
+      <span class="arrow next" onclick="nextSlide()">›</span>
+    </section>
+
+    <section class="services">
+      <h4>Diensten</h4>
+      <div class="cards">
+        <article class="card">
+          <h5>Managed Kubernetes</h5>
+          <p>Volledig beheerde clusters met updates en monitoring.</p>
+          <a href="projecten.html#k8s">Lees meer</a>
+        </article>
+        <article class="card">
+          <h5>Observability</h5>
+          <p>Dashboards, alerting en logging in één overzicht.</p>
+          <a href="projecten.html#obs">Lees meer</a>
+        </article>
+        <article class="card">
+          <h5>Automatisering</h5>
+          <p>Infrastructure as code met Ansible en GitOps.</p>
+          <a href="projecten.html#iac">Lees meer</a>
+        </article>
+      </div>
+    </section>
+
+    <section class="status">
+      <h4>Systeemstatus</h4>
+      <ul class="status-list">
+        <li><span class="dot ok"></span> API</li>
+        <li><span class="dot ok"></span> Portaal</li>
+        <li><span class="dot down"></span> Monitoring</li>
+      </ul>
+      <p class="muted small">Laatst bijgewerkt: zojuist</p>
+    </section>
+
+    <section>
+      <h4>Nieuwsbrief</h4>
+      <form onsubmit="return subscribe(event)">
+        <input type="text" id="nl-email" placeholder="E-mailadres">
+        <button type="submit" class="btn">Aanmelden</button>
+        <div id="nl-result"></div>
+      </form>
+    </section>
+  </main>
+
+  <footer>
+    <div class="social">
+      <a href="https://linkedin.com/company/example"><svg width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="9"/></svg></a>
+      <a href="https://github.com/example"><svg width="20" height="20" viewBox="0 0 20 20"><rect x="2" y="2" width="16" height="16"/></svg></a>
+    </div>
+    <p class="muted small">© 2026 Example B.V.</p>
+  </footer>
+
+  <div class="modal" id="cookie-modal">
+    <div class="modal-box">
+      <div class="h3">Cookies</div>
+      <p>Wij gebruiken cookies om de site te verbeteren.</p>
+      <button class="btn btn-primary" onclick="closeModal()">Akkoord</button>
+      <span class="close" onclick="closeModal()">×</span>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

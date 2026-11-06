@@ -1,0 +1,9 @@
+<!DOCTYPE html>
+<html>
+<head><title>{{ .Site.Title }}</title></head>
+<body>
+  {{ partial "header.html" . }}
+  <main>{{ block "main" . }}{{ end }}</main>
+  <footer><span class="icon-github" onclick="location.href='https://github.com/example'"></span></footer>
+</body>
+</html>
