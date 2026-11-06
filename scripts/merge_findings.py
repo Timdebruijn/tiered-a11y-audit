@@ -26,21 +26,40 @@ TIER_FROM_IMPACT = {"none": 1, "keyboard-only": 1, "preference-only": 1, "subtle
 REQUIRED = ("id", "title", "severity", "evidence", "fix")
 
 
+def read_json(p: Path):
+    """Parsed JSON, or None with a message on stderr. Agent output is machine-written text,
+    so every shape of breakage here is expected rather than exceptional."""
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as e:
+        print(f"!! {p.name}: unreadable ({type(e).__name__}: {e}); skipped", file=sys.stderr)
+        return None
+
+
 def load_findings(fdir: Path):
     agents = {}
     for p in sorted(fdir.glob("*.json")):
         if p.name.startswith("_"):
             continue
-        try:
-            agents[p.stem] = json.loads(p.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as e:
-            print(f"!! {p.name}: invalid JSON ({e}); skipped", file=sys.stderr)
+        data = read_json(p)
+        if data is None:
+            continue
+        if not isinstance(data, dict):
+            print(f"!! {p.name}: top level is {type(data).__name__}, expected an object; skipped", file=sys.stderr)
+            continue
+        if not isinstance(data.get("findings", []), list):
+            print(f"!! {p.name}: 'findings' is not a list; treated as empty", file=sys.stderr)
+            data["findings"] = []
+        agents[p.stem] = data
     return agents
 
 
 def parse_ownership(path: Path):
     owners = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
+    if not path.is_file():
+        print(f"!! --ownership {path} does not exist; expected references/wcag-ownership.md", file=sys.stderr)
+        return owners
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
         m = re.match(r"\|\s*(\d\.\d\.\d+)\s*\|\s*([^|]+?)\s*\|\s*(A{1,3})\s*\|\s*([\w-]+)\s*\|", line)
         if m:
             owners[m.group(1)] = {"name": m.group(2), "level": m.group(3), "owner": m.group(4)}
@@ -82,10 +101,64 @@ def line_range(f):
 TIER_WORD = {"T1": 1, "T2": 2, "T3": 3, "1": 1, "2": 2, "3": 3, 1: 1, 2: 2, 3: 3}
 
 
-def normalise_persona_finding(raw: dict, persona: str, problems: list) -> dict:
+def coerce_shape(f, agent: str, seq: int, problems: list):
+    """Make one finding safe for every later stage, or return None to drop it.
+
+    Everything here is a deviation an agent has actually produced: fix as a string,
+    wcag as plain strings, a missing id. Each one used to end the whole merge in a
+    traceback, which loses the other agents' work too."""
+    if not isinstance(f, dict):
+        problems.append(f"{agent}: finding {seq} is {type(f).__name__}, not an object; dropped")
+        return None
+    missing = [k for k in REQUIRED if k not in f]
+    if missing:
+        problems.append(f"{f.get('id') or '?'} ({agent}): missing {missing}")
+    f = dict(f)
+    if not isinstance(f.get("id"), str) or not f["id"].strip():
+        f["id"] = f"{agent.upper()[:3] or 'UNK'}-x{seq:02d}"
+        problems.append(f"{agent}: finding {seq} has no usable id; filed as {f['id']}")
+    f["id"] = f["id"].strip()
+    if "fingerprint" in f and not isinstance(f["fingerprint"], str):
+        problems.append(f"{f['id']}: fingerprint is {type(f['fingerprint']).__name__}; converted to text")
+        f["fingerprint"] = str(f["fingerprint"])
+    if not isinstance(f.get("title"), str):
+        f["title"] = str(f.get("title") or "(no title)")
+    if not isinstance(f.get("fix"), dict):
+        if f.get("fix") is not None:
+            problems.append(f"{f['id']}: fix is {type(f['fix']).__name__}, not an object; kept as fix.summary")
+            f["fix"] = {"summary": str(f["fix"])}
+        else:
+            f["fix"] = {}
+    wcag = f.get("wcag")
+    if isinstance(wcag, (str, dict)):
+        wcag = [wcag]
+    if not isinstance(wcag, list):
+        if wcag is not None:
+            problems.append(f"{f['id']}: wcag is {type(wcag).__name__}; ignored")
+        wcag = []
+    fixed = []
+    for sc in wcag:
+        if isinstance(sc, dict):
+            fixed.append(sc)
+        elif isinstance(sc, str) and re.match(r"\s*\d\.\d\.\d+", sc):
+            fixed.append({"sc": sc.strip().split()[0]})
+            problems.append(f"{f['id']}: wcag entry {sc!r} is a bare string; read as a criterion number")
+        elif sc is not None:
+            problems.append(f"{f['id']}: wcag entry {sc!r} unusable; ignored")
+    f["wcag"] = fixed
+    for key in ("evidence", "affected_users"):
+        if not isinstance(f.get(key, []), list):
+            problems.append(f"{f['id']}: {key} is {type(f[key]).__name__}, not a list; ignored")
+            f[key] = []
+    return f
+
+
+def normalise_persona_finding(raw: dict, persona: str, problems: list, seq: int = 0) -> dict:
     """Personas drift from the schema; map the common deviations and flag them."""
     f = dict(raw)
-    pid = f.get("id") or f"PER-{persona}-{len(problems) + 1:03d}"
+    # seq, not len(problems): two id-less findings used to collide on one id, and the
+    # clustering is keyed on id, so their links and severity floors hit the wrong finding.
+    pid = f.get("id") or f"PER-{persona}-x{seq:03d}"
     f["id"] = pid
     f["agent"] = f"persona:{persona}"
     if isinstance(f.get("evidence"), str):
@@ -150,14 +223,18 @@ def parse_personas(pdir: Path, problems: list):
     for p in sorted(pdir.glob("*.md")):
         name = p.stem.replace("-user", "")
         section, buf = None, []
-        lines = p.read_text(encoding="utf-8").splitlines() + ["## end"]
+        try:
+            lines = p.read_text(encoding="utf-8", errors="replace").splitlines() + ["## end"]
+        except OSError as e:
+            problems.append(f"persona {name}: unreadable ({e}); skipped")
+            continue
         for line in lines:
             h = line.strip().lower()
             if h.startswith("## "):
                 if section == "new":
-                    for raw in extract_json_blocks("\n".join(buf)):
+                    for seq, raw in enumerate(extract_json_blocks("\n".join(buf)), 1):
                         if isinstance(raw, dict):
-                            new_findings.append(normalise_persona_finding(raw, name, problems))
+                            new_findings.append(normalise_persona_finding(raw, name, problems, seq))
                 buf = []
                 if "confirmed" in h: section = "confirmed"
                 elif "cited" in h or "cites" in h: section = "cited"
@@ -199,24 +276,37 @@ def main():
         print("no findings files found", file=sys.stderr)
         return 2
     owners = parse_ownership(Path(a.ownership))
+    if not owners:
+        print("no criteria parsed from --ownership; cannot build the coverage matrix", file=sys.stderr)
+        return 2
     problems = []
     persona_links, persona_findings, flow_failures = parse_personas(ws / "personas", problems)
     dedupe = {}
     if (fdir / "_dedupe.json").exists():
-        try:
-            dedupe = json.loads((fdir / "_dedupe.json").read_text(encoding="utf-8"))
-        except json.JSONDecodeError as e:
-            problems.append(f"_dedupe.json invalid: {e}")
+        raw_dedupe = read_json(fdir / "_dedupe.json")
+        if raw_dedupe is None:
+            problems.append("_dedupe.json unreadable; no manual dedupe applied")
+        elif not isinstance(raw_dedupe, dict):
+            problems.append(f"_dedupe.json is {type(raw_dedupe).__name__}, expected "
+                            '{"CANONICAL": ["DUP", ...]}; ignored')
+        else:
+            for canon, dups in raw_dedupe.items():
+                if isinstance(dups, str):          # one id instead of a list of ids
+                    dups = [dups]
+                    problems.append(f"_dedupe.json[{canon!r}]: a single id, expected a list; read as one duplicate")
+                if not isinstance(dups, list):
+                    problems.append(f"_dedupe.json[{canon!r}] is {type(dups).__name__}; ignored")
+                    continue
+                dedupe[canon] = [str(d) for d in dups if isinstance(d, (str, int))]
     dup_to_canon = {d: c for c, ds in dedupe.items() for d in ds}
 
     all_findings = []
     for agent, data in agents.items():
-        for f in data.get("findings", []):
-            f = dict(f)
+        for seq, raw in enumerate(data.get("findings", []), 1):
+            f = coerce_shape(raw, agent, seq, problems)
+            if f is None:
+                continue
             f["agent"] = agent
-            missing = [k for k in REQUIRED if k not in f]
-            if missing:
-                problems.append(f"{f.get('id', '?')} ({agent}): missing {missing}")
             vi = f.get("visual_impact")
             derived = TIER_FROM_IMPACT.get(vi)
             if derived is None:
@@ -226,16 +316,22 @@ def main():
                 f["tier"] = derived
                 if f.get("proposed_tier") not in (None, derived):
                     problems.append(f"{f.get('id')}: proposed_tier {f.get('proposed_tier')} != tier {derived} from visual_impact {vi!r}; using {derived}")
-            own = (f.get("fix") or {}).get("ownership")
+            own = f["fix"].get("ownership")
             if own not in ("project", "override", "upstream", "accepted"):
-                problems.append(f"{f.get('id')}: fix.ownership missing or invalid ({own!r}); assuming 'project'")
-                f.setdefault("fix", {})["ownership"] = "project"
+                problems.append(f"{f['id']}: fix.ownership missing or invalid ({own!r}); assuming 'project'")
+                f["fix"]["ownership"] = "project"
             if not f.get("fingerprint"):
-                problems.append(f"{f.get('id')}: no fingerprint; generated from title+file")
-                f["fingerprint"] = re.sub(r"[^a-z0-9]+", "-", f.get("title", "").lower())[:40] + "@" + norm_file(f)
+                problems.append(f"{f['id']}: no fingerprint; generated from title+file")
+                f["fingerprint"] = re.sub(r"[^a-z0-9]+", "-", f["title"].lower())[:40] + "@" + norm_file(f)
             all_findings.append(f)
-    for f in persona_findings:
+    for seq, raw in enumerate(persona_findings, 1):
+        f = coerce_shape(raw, raw.get("agent", "persona"), seq, problems)
+        if f is None:
+            continue
         f["tier"] = TIER_FROM_IMPACT.get(f.get("visual_impact")) or f.get("proposed_tier")
+        if not f.get("fingerprint"):
+            problems.append(f"{f['id']}: no fingerprint; generated from title+file")
+            f["fingerprint"] = re.sub(r"[^a-z0-9]+", "-", f["title"].lower())[:40] + "@" + norm_file(f)
         all_findings.append(f)
 
     # --- merge: exact fingerprint, plus the orchestrator's _dedupe.json ---------------------
@@ -349,9 +445,15 @@ def main():
     cov_rows, conflicts, persona_notes = [], [], []
     reports = defaultdict(dict)          # sc -> {agent_file: status_dict}
     for agent, data in agents.items():
-        for sc, st in (data.get("sc_coverage") or {}).items():
+        sc_cov = data.get("sc_coverage") or {}
+        if not isinstance(sc_cov, dict):
+            problems.append(f"{agent}: sc_coverage is {type(sc_cov).__name__}, not an object; no coverage credited")
+            continue
+        for sc, st in sc_cov.items():
             if isinstance(st, dict):
                 reports[sc][agent] = st
+            else:
+                problems.append(f"{agent}: sc_coverage[{sc!r}] is {type(st).__name__}, not an object; ignored")
     expert_fails, persona_cites = defaultdict(list), defaultdict(list)
     for f in merged:
         is_persona = str(f["id"]).startswith("PER-") or str(f.get("agent", "")).startswith("persona")
@@ -454,7 +556,11 @@ def main():
         if not prev_path.exists():
             prev_path = Path(a.previous) / "_merged.json"
         if prev_path.exists():
-            prev = json.loads(prev_path.read_text(encoding="utf-8"))
+            prev = read_json(prev_path)
+            if not isinstance(prev, dict):
+                problems.append(f"previous {prev_path.name} unreadable or not an object; no delta written")
+                prev = None
+        if prev_path.exists() and prev is not None:
             prev_fps = {f["fingerprint"].strip().lower(): f for f in prev.get("findings", []) if f.get("fingerprint")}
             prev_resolved = {fp.lower() for fp in (prev.get("delta") or {}).get("resolved", [])}
             cur_fps = {f["fingerprint"].strip().lower(): f for f in merged}
