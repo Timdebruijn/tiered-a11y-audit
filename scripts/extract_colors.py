@@ -25,10 +25,38 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from contrast import parse as parse_colour, ratio, to_hex  # noqa: E402
 
 SKIP_DIRS = {"node_modules", ".git", "dist", "build", ".next", ".nuxt", ".output", ".svelte-kit", ".astro", "out",
-             "coverage", "vendor", ".venv", "venv", "__pycache__", "target", ".a11y-audit", "storybook-static",
-             "ansible", "terraform", "infra", "deploy", "k8s", "kubernetes", "helm"}
+             "coverage", "vendor", ".venv", "venv", "__pycache__", "target", ".a11y-audit", "storybook-static"}
+# Infrastructure, skipped at the top level only: src/deploy/ may well be UI.
+INFRA_DIRS = {"ansible", "terraform", "infra", "deploy", "k8s", "kubernetes", "helm"}
 STYLE_EXT = {".css", ".scss", ".sass", ".less"}
 EMBED_EXT = {".html", ".htm", ".vue", ".svelte", ".astro", ".h", ".hpp", ".c", ".cpp", ".go", ".rs", ".py", ".rb", ".php"}
+
+SSG_CONFIGS = ("hugo.toml", "hugo.yaml", "hugo.json", "_config.yml", ".eleventy.js",
+               "eleventy.config.js", "mkdocs.yml")
+# public/ and site/ hold generated output for a static-site generator, but source for
+# CRA, Vite and Next: public/index.html carries <html lang>, the title and the viewport meta.
+GENERATED_ONLY_BY_SSG = {"public", "site"}
+
+
+def ssg_generates_public(root):
+    """True when a static-site generator in this repo writes into public/ or site/."""
+    # ponytail: marker sniff, not a full SSG probe; add generators as they turn up.
+    if any((root / name).exists() for name in SSG_CONFIGS):
+        return True
+    cfg = root / "config.toml"
+    try:
+        return cfg.exists() and "baseURL" in cfg.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return False
+
+
+def file_size(p):
+    """Size in bytes, or None when the path cannot be stat'ed (dangling symlink, permissions)."""
+    try:
+        return p.stat().st_size
+    except OSError:
+        return None
+
 
 BG_WORDS = re.compile(r"(^|[-_])(bg|background|surface|card|panel|canvas|base|paper|page|body|sheet|well|elevated|overlay|backdrop|fill)([-_0-9]|$)", re.I)
 FG_WORDS = re.compile(r"(^|[-_])(fg|text|ink|foreground|on|muted|dim|dimmed|subtle|secondary|tertiary|link|accent|primary|brand|good|ok|success|warn|warning|bad|danger|error|info|placeholder|heading|label|caption|icon)([-_0-9]|$)", re.I)
@@ -149,6 +177,8 @@ def main():
     root = Path(a.root).resolve()
     tokens = defaultdict(dict)
     build = {"public", "_site", "out", "dist", "build", "resources/_gen"}
+    if not ssg_generates_public(root):
+        build -= GENERATED_ONLY_BY_SSG
     gi = root / ".gitignore"
     if gi.exists():
         for line in gi.read_text(encoding="utf-8", errors="ignore").splitlines():
@@ -157,14 +187,17 @@ def main():
                 build.add(line.strip("/"))
     for dirpath, dirnames, filenames in os.walk(root):
         rel = Path(dirpath).relative_to(root).as_posix()
+        at_root = rel in (".", "")
         dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS and not d.startswith(".")
-                       and f"{rel}/{d}".lstrip("./") not in build and (rel not in (".", "") or d not in build)]
+                       and not (at_root and d in INFRA_DIRS)
+                       and f"{rel}/{d}".lstrip("./") not in build and (not at_root or d not in build)]
         for f in filenames:
             p = Path(dirpath) / f
             ext = p.suffix.lower()
             if ext not in STYLE_EXT and ext not in EMBED_EXT:
                 continue
-            if p.stat().st_size > 3_000_000:
+            size = file_size(p)
+            if size is None or size > 3_000_000:
                 continue
             txt = p.read_text(encoding="utf-8", errors="ignore")
             rel = p.relative_to(root).as_posix()

@@ -27,6 +27,33 @@ BUILD_DIRS = {"public", "_site", "out", "dist", "build", "docs/_build", "site"}
 # Vendored code: a theme, a submodule, a copied design system. Counted separately, never as "your stack".
 VENDOR_DIRS = {"vendor", "themes", "third_party", "third-party", "external", "libs", "lib/vendor"}
 
+SSG_CONFIGS = ("hugo.toml", "hugo.yaml", "hugo.json", "_config.yml", ".eleventy.js",
+               "eleventy.config.js", "mkdocs.yml")
+# public/ and site/ hold generated output for a static-site generator, but source for
+# CRA, Vite and Next: public/index.html carries <html lang>, the title and the viewport meta.
+GENERATED_ONLY_BY_SSG = {"public", "site"}
+
+
+def ssg_generates_public(root):
+    """True when a static-site generator in this repo writes into public/ or site/."""
+    # ponytail: marker sniff, not a full SSG probe; add generators as they turn up.
+    if any((root / name).exists() for name in SSG_CONFIGS):
+        return True
+    cfg = root / "config.toml"
+    try:
+        return cfg.exists() and "baseURL" in cfg.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return False
+
+
+def file_size(p):
+    """Size in bytes, or None when the path cannot be stat'ed (dangling symlink, permissions)."""
+    try:
+        return p.stat().st_size
+    except OSError:
+        return None
+
+
 # Infrastructure directories: templates in here are not UI — counted separately, otherwise ignored.
 INFRA_DIRS = {"ansible", "terraform", "infra", "infrastructure", "deploy", "deployment", "k8s", "kubernetes", "helm",
               "playbooks", "roles", "ops", "docker", "nginx", "systemd"}
@@ -214,9 +241,10 @@ def classify_path(rel: str, build: set, vendor: set) -> str:
     parts = rel.split("/")
     for i in range(1, len(parts)):
         prefix = "/".join(parts[:i])
-        if prefix in build or parts[i - 1] in BUILD_DIRS and i == 1:
+        if prefix in build or (i == 1 and parts[0] in BUILD_DIRS):
             return "build"
-        if prefix in vendor or parts[i - 1] in VENDOR_DIRS:
+        # Top level only: the project's own themes/ is not vendored code.
+        if prefix in vendor or (i == 1 and parts[0] in VENDOR_DIRS):
             return "vendor"
     return "project"
 
@@ -264,6 +292,9 @@ def analyse(root: Path, max_files: int) -> dict:
         "infra_templates": Counter(), "csp": [],
     }
     for p in iter_files(root, max_files):
+        size = file_size(p)
+        if size is None:          # dangling symlink or unreadable: count nothing, read nothing
+            continue
         rel = p.relative_to(root).as_posix()
         name = p.name
         ext = p.suffix.lower()
@@ -323,7 +354,9 @@ def analyse(root: Path, max_files: int) -> dict:
             txt = read_text(p, 100_000)
             if "Microsoft.NET.Sdk.BlazorWebAssembly" in txt or "Components" in txt:
                 result["other_ecosystems"].append(f".NET web (Blazor/Razor?) ({rel})")
-        is_infra = any(seg in INFRA_DIRS for seg in rel.split("/")[:-1])
+        dirs_of = rel.split("/")[:-1]
+        # Top level only: src/pages/roles/ is an RBAC screen, not Ansible roles.
+        is_infra = bool(dirs_of) and dirs_of[0] in INFRA_DIRS
         if is_infra:
             if ext in TEMPLATE_EXT:
                 result["infra_templates"][TEMPLATE_EXT[ext]] += 1
@@ -340,7 +373,7 @@ def analyse(root: Path, max_files: int) -> dict:
         if re.search(r"\.stories\.(jsx?|tsx?|mdx|svelte|vue)$", name):
             result["file_types"]["Storybook stories"] += 1
         scan_for_signals = ext in TEXT_EXT
-        if (ext in EMBED_EXT or ext == ".conf" or name in CONFIG_NAMES) and p.stat().st_size < 2_000_000:
+        if (ext in EMBED_EXT or ext == ".conf" or name in CONFIG_NAMES) and size < 2_000_000:
             txt = read_text(p)
             if CSP_RE.search(txt):
                 result["csp"].append(rel)
@@ -349,7 +382,7 @@ def analyse(root: Path, max_files: int) -> dict:
                 result["embedded_html"].append(f"{rel} ({lines} lines)")
                 result["file_types"]["Embedded HTML (string literal)"] += 1
                 scan_for_signals = True
-        if scan_for_signals and p.stat().st_size < 2_000_000 and name not in {"package-lock.json", "pnpm-lock.yaml", "yarn.lock"}:
+        if scan_for_signals and size < 2_000_000 and name not in {"package-lock.json", "pnpm-lock.yaml", "yarn.lock"}:
             txt = read_text(p)
             result["signal_files_scanned"] += 1
             for pat, kind in SUPPRESSION_PATTERNS:
