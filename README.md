@@ -31,7 +31,7 @@ Exports: SARIF 2.1.0 for GitHub and GitLab code scanning, a draft ACR/VPAT-style
 As a personal skill:
 
 ```bash
-git clone https://github.com/<you>/tiered-a11y-audit ~/.claude/skills/tiered-a11y-audit
+git clone https://github.com/Timdebruijn/tiered-a11y-audit ~/.claude/skills/tiered-a11y-audit
 ```
 
 Then, in a repo: "Maak een toegankelijkheidsrapport van deze site" or "how accessible is this app?". The skill asks its questions, runs 20 to 45 minutes depending on mode, and leaves everything in `.a11y-audit/` (it asks to gitignore that folder first).
