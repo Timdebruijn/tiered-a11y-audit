@@ -66,7 +66,7 @@ The full audit lands in the 1-to-1.5-million range above, but on a 252-line fixt
 
 - The personas are AI simulations. They are good at spotting what checklists miss (a colour-blind persona found two "safe" palette tokens collapsing under deuteranopia; nothing else caught it), but they do not replace testing with disabled people. The report says so, and tier 3 asks for that testing.
 - Automated tools find a minority of real issues; the experts do the work, and the orchestrator verifies blockers by opening the code or the page.
-- **Measured detection rate: 21 of 24 (88%) on the fixture site, one run, 2026-11-06.** Claude Code 2.1.319, Opus, static analysis only. Scored by `scripts/grade_findings.py` against `evals/full-audit-fixture-site/ground-truth.json`. What the number hides, in both directions:
+- **Measured detection rate: 21 of 24 (88%) on the fixture site, one run, 2026-11-06.** Claude Code 2.1.319, Opus, static analysis only. Scored by `skills/tiered-a11y-audit/scripts/grade_findings.py` against `evals/full-audit-fixture-site/ground-truth.json`. What the number hides, in both directions:
   - **All 24 seeded failures were actually found.** The three the grader counts as missed are criterion-attribution failures, not blind spots: the generic "Lees meer" links cite 2.4.9 (AAA) where the ground truth expects 2.4.4 (AA), and the missing skip link and the blocked paste on the password field were reported with an **empty WCAG list**. By substance it is 24 of 24; by the grader's rule, which requires the criterion to match, it is 21.
   - **19% of findings (8 of 42) carried no WCAG criterion**, and `merge_findings.py` did not flag it — its `problems` list came back empty. The skill's own ground rules require a criterion or an explicit best-practice marker on every finding, so this is a real schema gap, and it is what cost two of the three detections.
   - 4 of the 24 landed in the wrong tier, all adjacent (carousel autoplay, colour-only status dots and the 13px root size placed in tier 1 instead of 2; placeholder-only labels in tier 2 instead of 1).
@@ -88,9 +88,18 @@ claude plugin eval . --scaffold --allow-tools Bash Write Edit --no-publish
 ```
 
 `--scaffold` runs each case's `place-files.sh`, which writes the fixture site into a temp dir.
-Default is three runs per case; add `--runs 1` for a single pass, and `--case <glob>` to pick
-cases — `full-audit-fixture-site` is a complete audit and costs accordingly. Results land in
+Default is three runs per case and `--ablation` defaults to `with-without`, so the full suite is
+six full audits unless you pass `--runs 1`; `--case <glob>` picks cases, and
+`full-audit-fixture-site` is a complete audit that costs accordingly. Results land in
 `evals/results/` (gitignored).
+
+To score the fixture's detection rate yourself, add `--keep-temp`: the scaffold directory is
+deleted otherwise, and with it the `.a11y-audit/findings/_merged.json` the grader reads. The run
+prints the kept path, which needs opening first (`chmod 700 <dir> <dir>/sealed`), then:
+
+```bash
+python3 skills/tiered-a11y-audit/scripts/grade_findings.py <kept>/sealed/home/cwd/.a11y-audit/findings/_merged.json evals/full-audit-fixture-site/ground-truth.json
+```
 
 ## Repository layout
 
