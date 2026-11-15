@@ -27,8 +27,8 @@
     {"id": "GT-24", "sc": "4.1.2", "file": "contact.html", "keywords": ["checkbox", "fake-checkbox", "agree"], "tier": 1}
   ],
   "should_pass": [
-    {"id": "SP-01", "sc": "1.3.1", "note": "<main> landmark present on both pages"},
-    {"id": "SP-02", "sc": "4.1.2", "note": "nav has aria-label=\"Hoofdmenu\""},
+    {"id": "SP-01", "sc": "1.3.1", "note": "<main> landmark present on both pages", "keywords": ["main landmark", "geen main", "no main", "main ontbreekt", "missing main"]},
+    {"id": "SP-02", "sc": "4.1.2", "note": "nav has aria-label=\"Hoofdmenu\"", "keywords": ["hoofdmenu", "nav landmark", "navigation landmark"]},
     {"id": "SP-03", "sc": "1.1.1", "note": "carousel slide images have alt text", "keywords": ["slide"]},
     {"id": "SP-04", "sc": "2.1.1", "note": "newsletter form uses a real <button type=submit>", "keywords": ["aanmelden", "newsletter", "nieuwsbrief"]}
   ]
