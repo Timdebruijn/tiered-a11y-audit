@@ -6,7 +6,8 @@
 A known failure counts as detected when one finding cites its criterion, cites its file, and mentions one
 of its keywords. Findings that match no known failure are listed as "unmatched" for manual review — they
 may be genuine extras or false positives; the script does not decide. Should-pass items are violated when
-a finding cites the criterion AND one of the item's keywords.
+a finding cites the criterion AND one of the item's keywords in its title or description -- not in its
+fix, where correct markup for some other problem legitimately mentions the same element.
 
 An item without `keywords` cannot be graded either way -- a known failure could never be matched, a
 should-pass item could never be flagged -- so it is reported as ungradable and left out of both
@@ -19,6 +20,17 @@ from pathlib import Path
 
 def text_of(f):
     return " ".join([str(f.get("title", "")), str(f.get("description", "")), json.dumps(f.get("fix", {}), ensure_ascii=False)]).lower()
+
+
+def claim_text_of(f):
+    """Only what the finding CLAIMS is wrong -- title and description, never the fix.
+
+    A should-pass item is violated when a finding asserts the thing is broken. The fix is
+    where correct markup legitimately appears: a repair for a heading problem contains
+    `<main>`, a repair for a menu button names the nav it controls. Searching the fix for
+    an element name therefore flags findings that never claimed anything about that element.
+    """
+    return " ".join([str(f.get("title", "")), str(f.get("description", ""))]).lower()
 
 
 def note_of(gt, sp_id):
@@ -72,7 +84,7 @@ def main():
         graded_sp += 1
         for f in findings:
             scs = {s.get("sc") for s in f.get("wcag", []) if isinstance(s, dict)}
-            if sp["sc"] in scs and any(w in text_of(f) for w in kws):
+            if sp["sc"] in scs and any(w in claim_text_of(f) for w in kws):
                 violated_sp.setdefault(sp["id"], []).append(f["id"])
     unmatched = [f for f in findings if f["id"] not in matched_findings]
     n = len(detected) + len(missed)

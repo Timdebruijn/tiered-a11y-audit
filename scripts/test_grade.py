@@ -108,6 +108,34 @@ def test_one_item_flagged_twice_counts_once():
     assert "SEM-001" in r.stdout and "ORC-001" in r.stdout, r.stdout
 
 
+def test_a_fix_snippet_mentioning_main_is_not_a_should_pass_violation():
+    """A heading repair whose fix wraps content in <main> claims nothing about the landmark."""
+    f = finding("SEM-007", "1.3.1", "index.html", "Home page has no h1 and skips to h4")
+    f["fix"] = {"summary": "Wrap the content and add a heading",
+                "code": "<main>\n  <h1>Example B.V.</h1>\n</main>"}
+    r = grade({"findings": [f]}, json.loads(ground_truth().read_text(encoding="utf-8")))
+    assert r.returncode == 0, r.stderr
+    assert "SP-01" not in r.stdout, r.stdout
+
+
+def test_a_fix_snippet_naming_the_nav_is_not_a_should_pass_violation():
+    """A hamburger-control fix names the nav it controls; that is not a claim the nav is unnamed."""
+    f = finding("SEM-008", "4.1.2", "index.html", "Hamburger control has no accessible name or state")
+    f["fix"] = {"summary": "Give the button aria-expanded and aria-controls",
+                "code": '<button aria-expanded="false" aria-controls="menu">Hoofdmenu</button>'}
+    r = grade({"findings": [f]}, json.loads(ground_truth().read_text(encoding="utf-8")))
+    assert r.returncode == 0, r.stderr
+    assert "SP-02" not in r.stdout, r.stdout
+
+
+def test_a_real_should_pass_violation_is_still_caught():
+    """Narrowing the match must not stop a genuine false claim from being flagged."""
+    f = finding("SEM-009", "1.3.1", "index.html", "No main landmark on either page")
+    r = grade({"findings": [f]}, json.loads(ground_truth().read_text(encoding="utf-8")))
+    assert r.returncode == 0, r.stderr
+    assert "SP-01" in r.stdout and "SEM-009" in r.stdout, r.stdout
+
+
 def test_merged_file_may_be_a_bare_list():
     """The documented fallback for a merged file that is a list, not an object."""
     r = grade(
