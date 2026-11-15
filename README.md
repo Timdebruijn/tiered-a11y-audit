@@ -35,7 +35,7 @@ git clone https://github.com/<you>/tiered-a11y-audit ~/src/tiered-a11y-audit
 ```
 
 ```bash
-ln -s ~/src/tiered-a11y-audit/skills/tiered-a11y-audit ~/.claude/skills/tiered-a11y-audit
+mkdir -p ~/.claude/skills && ln -s ~/src/tiered-a11y-audit/skills/tiered-a11y-audit ~/.claude/skills/tiered-a11y-audit
 ```
 
 Or load the whole repository as a plugin for one session, which is also what the evals do:
