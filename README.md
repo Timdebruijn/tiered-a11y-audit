@@ -28,10 +28,20 @@ Exports: SARIF 2.1.0 for GitHub and GitLab code scanning, a draft ACR/VPAT-style
 
 ## Install
 
-As a personal skill:
+The skill lives at `skills/tiered-a11y-audit/` so the repository is also a loadable plugin. As a personal skill, link that subdirectory (not the repository root, which has no `SKILL.md` of its own):
 
 ```bash
-git clone https://github.com/<you>/tiered-a11y-audit ~/.claude/skills/tiered-a11y-audit
+git clone https://github.com/Timdebruijn/tiered-a11y-audit ~/src/tiered-a11y-audit
+```
+
+```bash
+mkdir -p ~/.claude/skills && ln -s ~/src/tiered-a11y-audit/skills/tiered-a11y-audit ~/.claude/skills/tiered-a11y-audit
+```
+
+Or load the whole repository as a plugin for one session, which is also what the evals do:
+
+```bash
+claude --plugin-dir ~/src/tiered-a11y-audit
 ```
 
 Then, in a repo: "Maak een toegankelijkheidsrapport van deze site" or "how accessible is this app?". The skill asks its questions, runs 20 to 45 minutes depending on mode, and leaves everything in `.a11y-audit/` (it asks to gitignore that folder first).
@@ -67,16 +77,33 @@ The full audit lands in the 1-to-1.5-million range above, but on a 252-line fixt
 - Validated on three codebases so far: ESP32 firmware with HTML in C++ strings, a React SPA with canvas charts and a strict CSP, and a themed bilingual Hugo site. Other stacks have playbooks but no run behind them yet. Run it first on something you can afford to be wrong about, and read `SKILL-FEEDBACK` style notes it leaves when something looked off.
 - The runtime scan needs the scripts copied into the scratch directory (Node resolves imports from the script's own location); the skill does that, hand-written helpers must too.
 
+## Running the evals
+
+Four cases live in `evals/`, the default eval directory. They need the plugin manifest at
+`.claude-plugin/plugin.json` to resolve the skill, and they need three tools that are stripped
+unless you grant them on the command line, so run from the repository root:
+
+```bash
+claude plugin eval . --scaffold --allow-tools Bash Write Edit --no-publish
+```
+
+`--scaffold` runs each case's `place-files.sh`, which writes the fixture site into a temp dir.
+Default is three runs per case; add `--runs 1` for a single pass, and `--case <glob>` to pick
+cases — `full-audit-fixture-site` is a complete audit and costs accordingly. Results land in
+`evals/results/` (gitignored).
+
 ## Repository layout
 
 ```
-SKILL.md                    the workflow (read by Claude Code)
-agents/experts/             six lenses + the framework-maximizer + their shared protocol
-agents/personas/            eight personas + their shared protocol
-references/                 tiering rules, finding schema, WCAG ownership, framework playbooks, report template, tooling
-scripts/                    detector, pattern scanner, colour extractor, contrast tool, aria digest, runtime scan,
+.claude-plugin/plugin.json  the plugin manifest; without it the skill is not a plugin and `claude plugin eval` has nothing to load
+skills/tiered-a11y-audit/
+  SKILL.md                  the workflow (read by Claude Code)
+  agents/experts/           six lenses + the framework-maximizer + their shared protocol
+  agents/personas/          eight personas + their shared protocol
+  references/               tiering rules, finding schema, WCAG ownership, framework playbooks, report template, tooling
+  scripts/                  detector, pattern scanner, colour extractor, contrast tool, aria digest, runtime scan,
                             briefing builder, merge/coverage, report-table renderer
-evals/                      four test cases with fixture sites (claude plugin eval .)
+evals/                      four test cases with fixture sites (the default eval dir; stays at the repository root)
 ```
 
 ## Contributing
