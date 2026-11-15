@@ -31,7 +31,7 @@ Exports: SARIF 2.1.0 for GitHub and GitLab code scanning, a draft ACR/VPAT-style
 The skill lives at `skills/tiered-a11y-audit/` so the repository is also a loadable plugin. As a personal skill, link that subdirectory (not the repository root, which has no `SKILL.md` of its own):
 
 ```bash
-git clone https://github.com/<you>/tiered-a11y-audit ~/src/tiered-a11y-audit
+git clone https://github.com/Timdebruijn/tiered-a11y-audit ~/src/tiered-a11y-audit
 ```
 
 ```bash
