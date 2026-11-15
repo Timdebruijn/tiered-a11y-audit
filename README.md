@@ -52,11 +52,28 @@ Requirements: Python 3 (standard library only) for the scripts; for runtime chec
 
 From real runs: a full audit is 13 to 15 subagents and 1 to 1.5 million subagent tokens; lean about 10 and 0.5 to 0.7 million; mini about 5 and 0.3 million. Wall-clock 20 to 45 minutes for all of them, because the orchestrator's own verification takes as long as the agents.
 
+Measured on the eval cases (2026-11-06, Claude Code 2.1.319, Opus, one run per arm, `--ablation with-without`, so each figure is the with-arm only). Tokens are the run total including cache reads, which is most of it:
+
+| Case | Tokens | Cost | Turns | Wall-clock |
+|---|---|---|---|---|
+| `full-audit-fixture-site` | 1.29 million | $2.59 plus $0.24 judge | 18 | 12 minutes |
+| `focused-review-contact-form` | 43 thousand | $0.21 plus $0.04 judge | 4 | 1 minute |
+| `declines-non-frontend-repo` | 110 thousand | $0.25 plus $0.02 judge | 5 | 34 seconds |
+
+The full audit lands in the 1-to-1.5-million range above, but on a 252-line fixture and with **no subagents at all** — the orchestrator did every lens itself. A real repository spreads that token count over 13 to 15 agents instead of one context. Note also that `--ablation` defaults to `with-without` and `--runs` defaults to 3, so the full suite is six full audits unless you pass `--runs 1`.
+
 ## Limitations, honestly
 
 - The personas are AI simulations. They are good at spotting what checklists miss (a colour-blind persona found two "safe" palette tokens collapsing under deuteranopia; nothing else caught it), but they do not replace testing with disabled people. The report says so, and tier 3 asks for that testing.
 - Automated tools find a minority of real issues; the experts do the work, and the orchestrator verifies blockers by opening the code or the page.
-- Measured accuracy is not yet published. The fixture site has 24 seeded failures and 4 should-pass items with a grader (`scripts/grade_findings.py`); the number that matters is the detection rate on a blind run, and that run has not been done yet. Other projects publish such numbers; this one will once it has them.
+- **Measured detection rate: 21 of 24 (88%) on the fixture site, one run, 2026-11-06.** Claude Code 2.1.319, Opus, static analysis only. Scored by `skills/tiered-a11y-audit/scripts/grade_findings.py` against `evals/full-audit-fixture-site/ground-truth.json`. What the number hides, in both directions:
+  - **All 24 seeded failures were actually found.** The three the grader counts as missed are criterion-attribution failures, not blind spots: the generic "Lees meer" links cite 2.4.9 (AAA) where the ground truth expects 2.4.4 (A), and the missing skip link and the blocked paste on the password field were reported with an **empty WCAG list**. By substance it is 24 of 24; by the grader's rule, which requires the criterion to match, it is 21.
+  - **19% of findings (8 of 42) carried no WCAG criterion**, and `merge_findings.py` did not flag it — its `problems` list came back empty. The skill's own ground rules require a criterion or an explicit best-practice marker on every finding, so this is a real schema gap, and it is what cost two of the three detections.
+  - 4 of the 24 landed in the wrong tier, all adjacent (carousel autoplay, colour-only status dots and the 13px root size placed in tier 1 instead of 2; placeholder-only labels in tier 2 instead of 1).
+  - Should-pass: 1 of 4 violated. The carousel slides were flagged for having alt text of "Slide 1", "Slide 2", "Slide 3" — arguably a fair finding about non-descriptive alt text rather than a false positive, but it counts against the fixture as written.
+- The fixture does not measure the subagent pipeline. It is four files and 252 lines, and on that the orchestrator ran all six expert lenses and five personas itself rather than spawning subagents — **zero `Task` calls**, although `Task` was available. It said so plainly in the report, so this is a disclosed shortcut and not fabrication, but it means the 88% is an orchestrator-only number. The 13-to-15-subagent workflow has no measurement behind it yet.
+- **The eval case's own score (7 of 21 graders) is not a usable signal, and the suite is mis-designed for this case.** Every grader is `type: llm` with `focus: trace`, and an LLM judge sees only the first 12 and the last 12 trace messages — a documented limit, not a defect. A full audit is 160 messages, so the judge got 24 of them with `[…136 messages elided…]` in the middle, and graders then fail on evidence they never saw: the report does contain the four score values, the persona matrix and the `#9a9a9a` to `#767676` contrast fix that `13-scores-four-values`, `14-persona-matrix` and `06-muted-contrast-tier2-with-colour` were marked down for. The fix is to grade the artefacts instead of the trace — `focus: { source: file, path: .a11y-audit/REPORT.md }` for the report's content, and the free deterministic types (`file_exists`, `tool_used`, `regex` with `target: trace`, which has no window limit) for "this script ran" and "this file was written". Until then, read the detection rate, not the case score.
+- On the focused-review case the skill does not fire at all. In both arms the only tool calls are three `Read`s and no `Skill` call, so the three-tier structure that `02-three-tiers-still-used` checks is simply absent and the ablation delta is 0 — nothing was measured rather than nothing gained. The prompt does contain "toegankelijk", which is in the skill's trigger list; for a single form the model answers directly instead.
 - Validated on three codebases so far: ESP32 firmware with HTML in C++ strings, a React SPA with canvas charts and a strict CSP, and a themed bilingual Hugo site. Other stacks have playbooks but no run behind them yet. Run it first on something you can afford to be wrong about, and read `SKILL-FEEDBACK` style notes it leaves when something looked off.
 - The runtime scan needs the scripts copied into the scratch directory (Node resolves imports from the script's own location); the skill does that, hand-written helpers must too.
 
@@ -71,9 +88,18 @@ claude plugin eval . --scaffold --allow-tools Bash Write Edit --no-publish
 ```
 
 `--scaffold` runs each case's `place-files.sh`, which writes the fixture site into a temp dir.
-Default is three runs per case; add `--runs 1` for a single pass, and `--case <glob>` to pick
-cases — `full-audit-fixture-site` is a complete audit and costs accordingly. Results land in
+Default is three runs per case and `--ablation` defaults to `with-without`, so the full suite is
+six full audits unless you pass `--runs 1`; `--case <glob>` picks cases, and
+`full-audit-fixture-site` is a complete audit that costs accordingly. Results land in
 `evals/results/` (gitignored).
+
+To score the fixture's detection rate yourself, add `--keep-temp`: the scaffold directory is
+deleted otherwise, and with it the `.a11y-audit/findings/_merged.json` the grader reads. The run
+prints the kept path, which needs opening first (`chmod 700 <dir> <dir>/sealed`), then:
+
+```bash
+python3 skills/tiered-a11y-audit/scripts/grade_findings.py <kept>/sealed/home/cwd/.a11y-audit/findings/_merged.json evals/full-audit-fixture-site/ground-truth.json
+```
 
 ## Repository layout
 
