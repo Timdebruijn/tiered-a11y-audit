@@ -10,8 +10,8 @@ Most accessibility audits hand a team a long list sorted by success criterion. T
 
 The audit uses three tiers. The next list gives all three, with the promise each one makes to the team.
 
-- **Tier 1, invisible improvements.** A sighted mouse user with default settings sees no difference at all. This covers accessible names, semantics, focus management, announcements, support for reduced motion and forced colours, and tooling. A team can ship this today, without asking anyone.
-- **Tier 2, small and non-shocking adjustments.** Visible, but the product stays instantly recognisable. A brand colour shifted in lightness only, with the perceptual difference computed and stated. Underlined links. One pixel more text. A target grown to 24 pixels. A designer signs this off in one sprint.
+- **Tier 1**, invisible improvements. A sighted mouse user with default settings sees no difference at all. This covers accessible names, semantics, focus management, announcements, support for reduced motion and forced colours, and tooling. A team can ship this today, without asking anyone.
+- **Tier 2**, small and non-shocking adjustments. Visible, but the product stays instantly recognisable. A brand colour shifted in lightness only, with the perceptual difference computed and stated. Underlined links. One pixel more text. A target grown to 24 pixels. A designer signs this off in one sprint.
 - **Tier 3**, the road to a ten. Everything larger: triple-A criteria, redesigns, plain-language rewrites, new features, testing with disabled people, process and continuous integration.
 
 Severity is tracked separately from tier, and the two are independent. A blocker can sit in tier 1, because a missing label is invisible to fix. A nicety can sit in tier 3, because it needs a redesign.
