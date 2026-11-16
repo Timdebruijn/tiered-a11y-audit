@@ -66,51 +66,59 @@ Two sets of numbers follow: the estimates from real runs on real repositories, a
 
 From real runs, a full audit is 13 to 15 subagents and 1 to 1.5 million subagent tokens. A lean audit is about 10 subagents and 0.5 to 0.7 million tokens. A mini audit is about 5 subagents and 0.3 million. All three take 20 to 45 minutes of wall-clock time, because the orchestrator's own verification takes about as long as the agents do.
 
-The next table lists the three measured evaluation cases, with the tokens, the cost and the wall-clock time of each. In words: the full fixture audit took 1.29 million tokens, 2 dollars 59 and about 12 minutes; the focused review took 43 thousand tokens, 21 cents and about a minute; the case that declines took 110 thousand tokens, 25 cents and 34 seconds. Judging adds 2 to 24 cents per case on top.
+The next table lists the four measured evaluation cases, with the tokens, the cost and the wall-clock time of each. In words: the lean audit of the fixture site took 5.1 million tokens, 4 dollars 28 and about 10 minutes; the mini audit of the themed site took 2.2 million tokens, 2 dollars 9 and about 6 minutes; the focused review took 170 thousand tokens, 36 cents and a little over a minute; the case that declines took 90 thousand tokens, 25 cents and 34 seconds. Judging adds 3 to 25 cents per case on top.
 
 | Case | Tokens | Cost | Time |
 |---|---|---|---|
-| Full audit of the fixture site | 1.29 million | 2 dollars 59 | 12 minutes |
-| Focused review of a contact form | 43 thousand | 21 cents | 1 minute |
-| Declining a repository without an interface | 110 thousand | 25 cents | 34 seconds |
+| Lean audit of the fixture site, ten subagents | 5.1 million | 4 dollars 28 | 10 minutes |
+| Mini audit of the themed site, five subagents | 2.2 million | 2 dollars 9 | 6 minutes |
+| Focused review of a contact form | 170 thousand | 36 cents | 1 minute |
+| Declining a repository without an interface | 90 thousand | 25 cents | 34 seconds |
 
-Those were measured on 6 November 2026, with Claude Code 2.1.319 on Opus, one run per arm. Tokens are the run total including cache reads, which is most of the number.
+Those were measured on 16 November 2026, with Claude Code 2.1.319, the orchestrator on Opus and the subagents on Sonnet, one run per arm. Tokens are the run total including cache reads, which is most of the number.
 
-One warning about the figures. The full audit does land inside the 1-to-1.5-million range above, but it did so on a fixture of four files and 252 lines, and with no subagents at all. A real repository spreads that same token count over 13 to 15 agents instead of one context.
+One warning about the figures. The token counts are higher than the estimates above because they count every time the conversation is read again, by the orchestrator and by each subagent, while the estimates count what the subagents were given. The cost is the figure to compare. Earlier the same day, with every subagent on the top model and a separate step that translated the report, the same audit cost 10 dollars 66.
 
 A second warning about running the suite yourself. The ablation option defaults to comparing with and without the plugin, and the number of runs defaults to three, so the full suite is six complete audits unless you ask for one run.
 
 ## How well it works, measured
 
-The detection rate is 21 of 24, or 88 percent, on the fixture site. That is one run, on 6 November 2026, with Claude Code 2.1.319 on Opus, using static analysis only. It was scored by `grade_findings.py` against the ground-truth file that ships with the fixture.
+The detection rate is 23 of 24, or 96 percent, on the fixture site. That is one run, on 16 November 2026, with Claude Code 2.1.319, the orchestrator on Opus and ten subagents on Sonnet, using static analysis only. It was scored by `grade_findings.py` against the ground-truth file that ships with the fixture.
 
-The number hides something in both directions, and the detail blocks below give each one.
+One run is a sign and not a rate. The two runs before it on the same day, with nearly the same pipeline, found 22 and 24. The first measured run, on 6 November and without subagents, found 21. The detail blocks below say what the number hides.
 
-### All 24 seeded failures were actually found
+### The one miss was found under another criterion
 
-The three that the grader counts as missed are criterion-attribution failures rather than blind spots. The generic "read more" links were reported against criterion 2.4.9, which is level AAA, where the ground truth expects 2.4.4 at level A. The missing skip link and the blocked paste on the password field were both reported with an empty criterion list. By substance the result is 24 of 24. By the grader's rule, which requires the criterion to match, it is 21.
+The social links without an accessible name were reported, against criteria 1.1.1 and 2.4.4 where the ground truth expects 4.1.2. By substance the result is 24 of 24. By the grader's rule, which requires the criterion to match, it is 23.
 
-### Nearly a fifth of findings carried no criterion at all
+### Every finding now names a criterion
 
-8 of 42 findings, which is 19 percent, named no success criterion, and the merge script did not flag a single one of them. Its list of problems came back empty. The skill's own ground rules require either a criterion or an explicit best-practice marker on every finding, so this is a real gap in the schema check, and it is what cost two of the three detections above. The merge script has since been taught to flag it: a finding without a criterion and without the marker, a criterion that is triple-A only, a citation that does not exist in the repository and a contrast ratio that does not match its colours are now all listed as problems to resolve. No run has been measured with that check in place yet.
+On 6 November, 8 of 42 findings named no success criterion, and the merge script did not flag a single one of them. The merge script has since been taught to check what a finding claims: a criterion or the explicit best-practice marker, a level A or level AA criterion, a citation that exists in the repository, a contrast ratio that matches its colours. In this run none of the 48 findings lacked a criterion or the marker, every cited snippet was found in its file, and the list of problems was empty at the end.
 
-### Four findings landed one tier off
+### Three findings landed one tier off
 
-4 of the 24 were placed in the wrong tier, all of them adjacent to the right one. Carousel autoplay, the colour-only status dots and the 13-pixel root font size were put in tier 1 where they belong in tier 2. Placeholder-only labels were put in tier 2 where they belong in tier 1.
+3 of the 24 were placed in a tier next to the right one. The carousel arrows and the errors shown by a red border alone were put in tier 2 where the fixture expects tier 1. The 13-pixel root font size was put in tier 1 where it expects tier 2.
 
 ### One of the four should-pass items was flagged
 
-The carousel slides were flagged for carrying alt text reading "Slide 1", "Slide 2" and "Slide 3". That is arguably a fair finding about non-descriptive alternative text rather than a false positive, but it counts against the fixture as it is written today.
+The carousel slides were flagged for carrying alt text reading "Slide 1", "Slide 2" and "Slide 3". That is arguably a fair finding about non-descriptive alternative text rather than a false positive, but it counts against the fixture as it is written today. It has been flagged in every measured run.
+
+### The whole pipeline ran
+
+The lean audit spawned four expert subagents, five personas and the framework-maximizer. All four phase checks passed and the report passed the linter. The orchestrator wrote its prose in one file of 72 lines and never edited the report itself. The mini audit of the themed site ran two experts, two personas and the maximizer, and separated ten findings that need a change upstream from eight the project can fix.
+
+The focused review reaches the skill as well, which it did not on 6 November: with the plugin all six of its graders pass, and without it the answer in three tiers is missing.
 
 ## Limitations, honestly
 
-The next list gives the eight things this skill does not do, or does not yet know about itself.
+The next list gives the nine things this skill does not do, or does not yet know about itself.
 
 - **Simulated personas.** They are role-played by an AI. They are good at catching what checklists miss. A colour-blind persona once found two palette tokens, both thought safe, collapsing into each other under deuteranopia, and nothing else caught it. They are still not a substitute for testing with disabled people. The report says so, and tier 3 asks for that testing explicitly.
 - **Tools find little.** Automated checks catch a minority of real issues. The expert lenses do the work, and the orchestrator verifies every blocker by opening the code or the page.
-- **No subagents measured.** The fixture does not exercise that pipeline. It is four files and 252 lines, and on that the orchestrator ran all six lenses and five personas itself instead of spawning subagents: zero delegation calls, although delegation was available. It said so plainly in its own report, so this is a disclosed shortcut rather than a fabrication. It does mean the 88 percent is an orchestrator-only number, and that the 13-to-15-subagent workflow has no measurement behind it yet.
-- **Ignore the case score.** The 7 out of 21 graders says more about the grading than about the audit. The detail block below explains why.
-- **No trigger on focused reviews.** The skill does not fire there at all. In both arms of that case the only tool calls were three file reads and no skill invocation, so the three-tier structure the grader checks was simply absent and the measured difference was zero. Nothing was gained because nothing was measured. The prompt does contain the Dutch word for accessible, which is in the trigger list, but for a single form the model chooses to answer directly.
+- **One run per number.** Every figure above is a single run. Three runs on one day found 22, 23 and 24 of the 24 seeded failures, so read 96 percent as somewhere between 22 and 24.
+- **A small fixture.** It is four files and 252 lines, and one context without subagents already found 21 of the 24. What ten subagents add on a large codebase, where no single context can read everything, has no measurement behind it yet.
+- **Ignore the case score.** On the lean audit 4 of 21 graders passed, and that says more about the grading than about the audit. The detail block below explains why.
+- **Only Dutch is measured.** All four evaluation prompts are Dutch. The skill writes its findings and its report in the language you speak, and the fixed words of the report ship in English and Dutch, but no run in another language has been graded.
 - **Three stacks proven.** Those codebases have a real run behind them. Those are ESP32 firmware with HTML inside C++ strings, a React single-page application with canvas charts and a strict Content Security Policy, and a themed bilingual Hugo site. Other stacks have playbooks written for them but no run yet. Try it first on something you can afford to be wrong about, and read the feedback notes it leaves when something looked off.
 - **Scripts go in the scratch directory.** The runtime scan needs them there. Node resolves imports from the directory the script itself sits in, so a script left in the skill folder cannot find the installed packages. The skill handles this; anything hand-written has to do the same.
 - **No overlay widgets, ever.** The skill refuses to recommend one. They do not achieve conformance and they frequently make assistive technology worse.
@@ -119,7 +127,7 @@ The next list gives the eight things this skill does not do, or does not yet kno
 
 Every grader judges the trace with a language model, and such a judge sees only the first 12 and the last 12 messages of that trace. That is a documented limit rather than a defect.
 
-A full audit is 160 messages. The judge therefore received 24 of them, with 136 elided in the middle, and then marked things absent that it never saw. The report does contain the four score values, the persona matrix and the contrast fix that it was marked down for missing.
+A lean audit with ten subagents is several hundred messages. The judge received 24 of them, with the rest elided in the middle, and then marked things absent that it never saw. It failed the grader for using the merge script in a run that ran that script more than once, and the grader for choosing the small mode in a run that chose it.
 
 The repair is to grade the written artefacts instead of the trace, and to use the deterministic grader types for questions such as whether a given script ran. Until that is done, read the detection rate and ignore the case score.
 

@@ -1,6 +1,6 @@
 {
   "name": "tiered-a11y-audit",
   "description": "Full accessibility (a11y) audit of any frontend repository, producing a three-tier report: invisible fixes you can ship today, small non-shocking visual tweaks, and the road to a 10. Uses parallel expert subagents plus persona subagents simulating people who rely on assistive tech.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "license": "MIT"
 }

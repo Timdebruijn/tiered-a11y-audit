@@ -2,9 +2,20 @@
 
 Rounds of review and real runs, newest first. Each round changed what the report says, not only how it is phrased.
 
-## Unreleased
+## 1.1.0 (2026-11-16)
 
-Everything merged after 1.0, with the pull request it came in. The version in `.claude-plugin/plugin.json` is still 1.0.0. The numbers in the README are still those of the run of 6 November; round 12 has what was measured since.
+Everything merged after 1.0, with the pull request it came in. The numbers in the README are those of the last eval run of 16 November, described in round 13.
+
+### Round 13 — what an audit costs, the report step, and any language (2026-11-16)
+- The eval run of round 12, repeated with the fix for runs without a person, showed a working audit at 10 dollars 66 for one more seeded failure than the 2 dollar 59 run of 6 November. Per agent: one subagent that translated the report and cleared linter points wrote 27 percent of all output; every subagent ran on the top model.
+- Agents write their findings in the report language from the start, so nothing is translated afterwards. What scripts read stays as the schema spells it. The renderer puts a contrast written as 4.5:1 into words itself (#22).
+- Expert, persona and maximizer subagents run on the mid-tier model by default; the orchestrator's own steps stay on the session's model (#23).
+- The report is assembled by the renderer from the draft and `report-prose.md`, the one small file the orchestrator writes. `REPORT.md` is never edited by hand. A prose file with a section twice, or with a section that is no gap of the report, is refused (#24).
+- `SKILL.md` asks for one shell call per step: a merge with its phase check, the renderer with the linter (#25).
+- The description no longer leans on Dutch trigger phrases, and the scan for link texts that say nothing knows seven languages and names them in its row, so a zero in another language reads as not searched (#26).
+- `detect_stack.py` counts a hand-written `site/` or `public/` folder as the user interface, as the other two scanners already did; an eval trace showed it reporting no interface for the fixture (#21).
+- The last eval run, one run per arm, with all of the above: the lean audit of the fixture cost 4 dollars 28 with ten subagents and found 23 of 24 seeded failures; the one miss was reported under another criterion. No finding lacked a criterion, the merge listed no problems, all four phase checks passed and the report passed the linter. The orchestrator wrote its prose in one file of 72 lines and did not edit the report. The mini audit of the themed site cost 2 dollars 9 with five subagents. The focused review scores 1.00 with the plugin and 0.83 without, with the new description.
+- Still true: the case scores of the two audit cases (0.19 and 0.40) do not measure the audit, because their graders read only the first and last twelve messages of a trace. Only Dutch prompts have been measured.
 
 ### Round 12 — the second eval run (2026-11-16)
 - The suite ran on everything below, three runs per arm. The focused review scores 1.00 with the plugin against 0.83 without, where the first run measured no difference; the grader for the three-tier answer passes only with the plugin. Both audit cases stopped after the Phase 1 questions, because nobody answers in a scripted run: `full-audit-fixture-site` scored 0.19 with the plugin and 0.29 without, `themed-site-fix-ownership` 0.20 either way. The first run had got past that point only by not asking.
