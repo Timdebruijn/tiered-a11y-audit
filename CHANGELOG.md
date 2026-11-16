@@ -2,6 +2,33 @@
 
 Rounds of review and real runs, newest first. Each round changed what the report says, not only how it is phrased.
 
+## Unreleased
+
+Everything merged after 1.0, with the pull request it came in. The version in `.claude-plugin/plugin.json` is still 1.0.0. No audit has been measured since the run of 6 November, so the numbers in the README describe the skill as it was then, not what follows.
+
+### Round 11 — scripts take over what was left to memory (2026-11-16)
+- `merge_findings.py` checks what a finding claims: the cited file, lines and snippet exist, the criterion is level A or AA with its name and level from the ownership table, and a stated contrast ratio is recomputed. A finding with no criterion and no best-practice marker is reported; the measured run had 8 of 42 such findings and flagged none (#8).
+- `render_report_parts.py` writes the whole report as `REPORT.draft.md`, with every table and finding block filled from `_merged.json` and the prose left as marked gaps, instead of the orchestrator retyping each block (#9).
+- The report can be written in any language. The fixed words live in `references/report-labels/<code>.json`; English and Dutch ship, any other language is translated once from a file the renderer writes into the workspace and then validated (#10).
+- `lint_report.py` checks the finished report: no gap left, every report ID present once, and the read-aloud rules a script can decide (table width, heading levels, nested lists, symbols, slashes, ratios with a colon). Phase 6 ends when it exits 0 (#11).
+- `check_phase.py` checks at the end of phases 3 to 6 that the phase left what the next one builds on: every expert's file, a status for every criterion it owns, a merge newer than its inputs, briefs newer than the stack profile, a report that passes the linter. `build_briefs.py` writes the list of agents it reads, and ends each lens brief with the start of that agent's findings file (#12).
+- `preflight.py` does Phase 0 in one read-only command and sets the workspace up in a second. A re-audit moves the whole earlier audit aside, a run in progress stays, nothing is deleted, and `.gitignore` is only appended to (#13).
+- The merge separates what it settled itself (`notes`) from what needs a decision (`problems`). Snippets are compared with whitespace next to punctuation removed, a persona's prose is no longer looked up as a quote, and a coverage reason is read from `reason` as well as `note` (#14).
+- `SKILL.md` follows the order of the work: the stack profile and the static scans open Phase 2, the persona selection is made in Phase 3, a finding is split into two tiers in 4c. Subagents are stated as the rule for full, lean and mini audits. The description names the focused review. `scan_patterns.py` counts forms and form controls, which decide mini or lean (#16).
+- Each brief carries only the reference parts its reader acts on, about 12 percent less text. The cuts stop the build when a reference no longer has the section or field they name (#17).
+- `LICENSE` added: MIT, as `plugin.json` and the README already said (#15).
+- Eight self-checks next to the scripts (`test_walk`, `test_merge`, `test_grade`, `test_render`, `test_lint`, `test_phase`, `test_preflight`, `test_briefs`), plain asserts, run with `python3 skills/tiered-a11y-audit/scripts/test_<name>.py`.
+
+### Round 10 — the first measured run (2026-11-15)
+- The repository is a loadable plugin: `.claude-plugin/plugin.json`, the skill under `skills/tiered-a11y-audit/`, `evals/` at the root. Before this the eval cases could not run at all (#3).
+- `grade_findings.py` no longer scores items it cannot grade: a ground-truth item without keywords is reported as ungradable and left out of both denominators, a should-pass item flagged twice is counted once, and three crashes on unusual input are gone (#4).
+- The README gives the measured detection rate, 21 of 24 seeded failures, with what the number overstates and understates, instead of a promise to measure (#5).
+- README: install link corrected after the move (#6), and the whole text rewritten to the skill's own read-aloud rules (#7).
+
+### Round 9 — two faults found by reading the scripts (2026-11-06)
+- The file walk dropped real UI directories: `roles/`, `public/` and `site/` were skipped at any depth, so `src/pages/roles/` or a hand-written `public/` vanished from the audit. Infra and vendor names now count at the top level only, and `public/` and `site/` are build output only next to a static-site generator config. A dangling symlink no longer stops the walk (#1).
+- One malformed findings file no longer takes the whole merge down: wrong shapes are coerced where that loses nothing and reported, a file that is not valid JSON is skipped with a message, and two persona findings without an ID no longer collide (#2).
+
 ## 1.0 (2026-11-06)
 
 ### Round 8 — landscape comparison
