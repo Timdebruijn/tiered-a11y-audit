@@ -4,7 +4,12 @@ Rounds of review and real runs, newest first. Each round changed what the report
 
 ## Unreleased
 
-Everything merged after 1.0, with the pull request it came in. The version in `.claude-plugin/plugin.json` is still 1.0.0. No audit has been measured since the run of 6 November, so the numbers in the README describe the skill as it was then, not what follows.
+Everything merged after 1.0, with the pull request it came in. The version in `.claude-plugin/plugin.json` is still 1.0.0. The numbers in the README are still those of the run of 6 November; round 12 has what was measured since.
+
+### Round 12 — the second eval run (2026-11-16)
+- The suite ran on everything below, three runs per arm. The focused review scores 1.00 with the plugin against 0.83 without, where the first run measured no difference; the grader for the three-tier answer passes only with the plugin. Both audit cases stopped after the Phase 1 questions, because nobody answers in a scripted run: `full-audit-fixture-site` scored 0.19 with the plugin and 0.29 without, `themed-site-fix-ownership` 0.20 either way. The first run had got past that point only by not asking.
+- `preflight.py` reports whether a person is there to answer, and when nobody is, Phase 1 goes on with for each question the option that needs no permission: no edit of `.gitignore`, static only, nothing installed (#19).
+- One print-mode run with that fix, on the fixture but outside the eval harness: a lean audit with 13 subagent calls where the first run made none, 22 of 24 seeded failures detected, no finding without a criterion, an empty problem list in the merge, all four phase checks passed and a report the linter accepts. It did not state the defaults it took, which the instructions ask for; the wording was made firmer afterwards and has not been measured. It is one run, so it is a sign and not a rate.
 
 ### Round 11 — scripts take over what was left to memory (2026-11-16)
 - `merge_findings.py` checks what a finding claims: the cited file, lines and snippet exist, the criterion is level A or AA with its name and level from the ownership table, and a stated contrast ratio is recomputed. A finding with no criterion and no best-practice marker is reported; the measured run had 8 of 42 such findings and flagged none (#8).
