@@ -1,6 +1,6 @@
 # Report template
 
-Write `.a11y-audit/REPORT.md` with exactly this structure. Translate the headings into the report language (the user's language); keep code, selectors and WCAG numbers unchanged. Example headings in Dutch are given in brackets.
+Write `.a11y-audit/REPORT.md` with exactly this structure. The headings come from the labels file of the report language (the user's language), and the finding text is already in that language; keep code, selectors and WCAG numbers unchanged. Example headings in Dutch are given in brackets.
 
 The report is read by people who may use a screen reader, text-to-speech or magnification. Structure rules, applied to every section without exception:
 

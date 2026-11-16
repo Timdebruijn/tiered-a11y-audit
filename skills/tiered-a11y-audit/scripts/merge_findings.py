@@ -182,6 +182,13 @@ def coerce_shape(f, agent: str, seq: int, problems: Log):
     return f
 
 
+def title_fingerprint(f: dict) -> str:
+    """A fingerprint for a finding that came without one: a slug of its title at its file. A title in a script without
+    Latin letters leaves no slug; the finding's own ID stands in then, so that two such findings are not taken for one."""
+    slug = re.sub(r"[^a-z0-9]+", "-", str(f.get("title") or "").lower()).strip("-")[:40]
+    return (slug or str(f.get("id") or "finding").lower()) + "@" + norm_file(f)
+
+
 def squash(s: str) -> str:
     """Backslashes dropped, so a snippet quoted from HTML inside a C++ or JS string still matches the escaped
     source. Whitespace dropped next to punctuation, so code an agent reflowed onto one line still matches the
@@ -295,7 +302,7 @@ def normalise_persona_finding(raw: dict, persona: str, problems: Log, seq: int =
             problems.note(f"{pid}: no visual_impact; derived from tier {t}")
         else:
             problems.append(f"{pid}: no visual_impact and no tier")
-    f.setdefault("fingerprint", re.sub(r"[^a-z0-9]+", "-", f.get("title", "").lower())[:40] + "@" + norm_file(f))
+    f.setdefault("fingerprint", title_fingerprint(f))
     f.setdefault("affected_users", [persona])
     f.setdefault("confidence", "medium")
     f["persona_origin"] = persona
@@ -437,7 +444,7 @@ def main():
                 f["fix"]["ownership"] = "project"
             if not f.get("fingerprint"):
                 problems.note(f"{f['id']}: no fingerprint; generated from title+file")
-                f["fingerprint"] = re.sub(r"[^a-z0-9]+", "-", f["title"].lower())[:40] + "@" + norm_file(f)
+                f["fingerprint"] = title_fingerprint(f)
             all_findings.append(f)
     for seq, raw in enumerate(persona_findings, 1):
         f = coerce_shape(raw, raw.get("agent", "persona"), seq, problems)
@@ -448,7 +455,7 @@ def main():
         f["tier"] = derived or proposed
         if not f.get("fingerprint"):
             problems.note(f"{f['id']}: no fingerprint; generated from title+file")
-            f["fingerprint"] = re.sub(r"[^a-z0-9]+", "-", f["title"].lower())[:40] + "@" + norm_file(f)
+            f["fingerprint"] = title_fingerprint(f)
         all_findings.append(f)
 
     # --- merge: exact fingerprint, plus the orchestrator's _dedupe.json ---------------------

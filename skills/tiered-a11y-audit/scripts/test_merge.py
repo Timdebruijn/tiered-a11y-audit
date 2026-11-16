@@ -245,6 +245,19 @@ def test_a_fix_given_as_text_is_kept_but_its_ownership_is_asked_for():
         assert len(merged["problems"]) == 1 and "'project' is assumed" in merged["problems"][0], merged["problems"]
 
 
+def test_two_findings_without_a_latin_title_are_not_merged_into_one():
+    # Agents write in the report language. A title in Japanese leaves no slug to build a fingerprint from,
+    # and two such findings on one file used to end up with the same one and be merged.
+    with tempfile.TemporaryDirectory() as d:
+        a = finding("JPN-001", fingerprint="", title="\u30b3\u30f3\u30c8\u30e9\u30b9\u30c8\u4e0d\u8db3")
+        b = finding("JPN-002", fingerprint="", title="\u30d5\u30a9\u30fc\u30ab\u30b9\u4e0d\u53ef")
+        ws = claims_workspace(d, [a, b])
+        merge(ws)
+        merged = json.loads((ws / "findings" / "_merged.json").read_text())
+        assert sorted(f["id"] for f in merged["findings"]) == ["JPN-001", "JPN-002"], [f["id"] for f in merged["findings"]]
+        assert len({f["fingerprint"] for f in merged["findings"]}) == 2, [f["fingerprint"] for f in merged["findings"]]
+
+
 def test_level_and_ratio_are_corrected_in_the_output():
     with tempfile.TemporaryDirectory() as d:
         ws = claims_workspace(d, [finding("FIX-001", wcag=[{"sc": "2.4.4", "name": "Link purpose", "level": "AAA"}],

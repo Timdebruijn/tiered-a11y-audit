@@ -43,7 +43,7 @@ FINDINGS = [
 ]
 
 
-def run(findings, lang="en", ws=None):
+def run(findings, lang="en", ws=None, extra=None, personas=None):
     if ws is not None:
         r = subprocess.run([sys.executable, str(HERE / "render_report_parts.py"), str(ws), "--lang", lang], capture_output=True, text=True)
         draft = (ws / "REPORT.draft.md").read_text(encoding="utf-8") if (ws / "REPORT.draft.md").exists() else ""
@@ -54,7 +54,10 @@ def run(findings, lang="en", ws=None):
     (Path(d) / "src").mkdir()
     (Path(d) / "src" / "page.html").write_text("<main>\n<div onclick>\n</div>\n", encoding="utf-8")
     (ws / "findings" / "experts.json").write_text(json.dumps({"agent": "experts", "positives": ["One main landmark."],
-                                                             "findings": findings}), encoding="utf-8")
+                                                             "findings": findings, **(extra or {})}), encoding="utf-8")
+    for name, text in (personas or {}).items():
+        (ws / "personas").mkdir(exist_ok=True)
+        (ws / "personas" / f"{name}.md").write_text(text, encoding="utf-8")
     m = subprocess.run([sys.executable, str(HERE / "merge_findings.py"), str(ws), "--ownership", str(OWNERSHIP)],
                        capture_output=True, text=True)
     assert m.returncode == 0, m.stderr
@@ -113,6 +116,43 @@ def test_structure_meets_the_read_aloud_rules():
 def test_a_tier_without_findings_says_none_instead_of_a_symbol():
     _, draft, _ = run([FINDINGS[0]])
     assert "| 2 | 0 | none | none |" in draft and "| 3 | 0 | none | none |" in draft, "an empty tier leaves a symbol-only cell"
+
+
+def test_a_contrast_with_a_colon_is_put_into_words_and_code_is_left_alone():
+    f = finding("KBD-009", title="Grey text at 2.81:1", description="The ratio is 2.81:1 where 4.5:1 is needed; see `ratio(4.5:1)` and file.css:12:1.",
+                verify="Measure 4,5:1 or better.")
+    for lang, to in (("en", "to"), ("nl", "op")):
+        _, draft, ids = run([f], lang)
+        assert f"Grey text at 2.81 {to} 1" in draft and f"The ratio is 2.81 {to} 1 where 4.5 {to} 1 is needed" in draft, f"{lang}: ratio left with a colon"
+        assert f"Measure 4,5 {to} 1 or better." in draft, f"{lang}: a decimal comma is a ratio too"
+        assert "`ratio(4.5:1)`" in draft and "file.css:12:1" in draft, f"{lang}: code or a line and column reference was rewritten"
+        assert not [m for _, rule, m in lint(draft, ids) if "ratio" in m], f"{lang}: the linter still finds a ratio"
+
+
+def test_agent_text_outside_the_finding_blocks_is_put_into_words_too():
+    accepted = finding("KBD-010", fix={"ownership": "accepted", "summary": "None.", "exception": {"tool": "axe", "rule": "x", "selector": "#a",
+                                                                                              "reason": "A ratio of 3:1 is allowed here."}})
+    cov = {"lenses": ["keyboard-focus"], "sc_coverage": {"2.1.2": {"status": "pass", "note": "Ring measures 3.2:1."}}}
+    _, draft, _ = run([accepted, finding("KBD-011", description="\u30b3\u30f3\u30c8\u30e9\u30b9\u30c8\u6bd44.5:1\u3067\u3059, at 12:15, on a 16:9 screen.")], extra=cov)
+    assert "A ratio of 3 to 1 is allowed here." in draft, "the reason of an accepted exception kept its colon"
+    assert "Ring measures 3.2 to 1." in draft, "a coverage note kept its colon"
+    assert "\u6bd44.5 to 1\u3067\u3059" in draft, "a ratio next to kana or kanji was not recognised"
+    assert "at 12:15, on a 16:9 screen" in draft, "a time or an aspect ratio was rewritten"
+
+
+def test_the_flow_table_of_a_persona_is_read_by_position_not_by_english_words():
+    persona = ("# Schermlezer\n\n## Flow results\n| Taak | Resultaat | Gevoel | Obstakel |\n|---|---|---|---|\n"
+               "| Flow bestellen | failed | traag | Knop zonder naam |\n| Contact | completed | vlot | geen |\n\n## In my own words\nTekst.\n")
+    _, draft, _ = run(FINDINGS, "nl", personas={"screen-reader-user": persona})
+    assert "| Taak | screen-reader |" not in draft, "the translated header row became a result row"
+    assert "| Flow bestellen | screen-reader | mislukt | Knop zonder naam |" in draft, "a flow whose name starts with Flow was dropped"
+    assert "| Contact | screen-reader | voltooid | geen |" in draft
+
+
+def test_the_draft_no_longer_asks_for_a_translation():
+    _, draft, _ = run(FINDINGS, "nl")
+    assert "translate the finding text" not in draft and "the agents wrote it in the report language" in draft
+    assert "translated" not in draft.split("-->", 1)[1], "a gap further down still asks for a translation"
 
 
 def test_dutch_uses_one_word_per_severity():

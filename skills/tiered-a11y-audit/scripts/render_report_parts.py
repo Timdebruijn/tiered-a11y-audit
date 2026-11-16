@@ -12,8 +12,8 @@ Reads findings/_merged.json, findings/<agent>.json, coverage.md and personas/*.m
                     results, appendix B and C), kept for anything that still reads it
   report-ids.json   report ID → source finding (so IDs stay consistent while writing)
 Every value in a finding block comes from _merged.json, so nothing is retyped and nothing can be dropped
-or altered on the way into the report. Finding text stays in the agents' working language (English) and
-the orchestrator translates it in place. The fixed words of the report come from a labels file, so any
+or altered on the way into the report. The agents write their finding text in the report language, so it
+goes in as it is; a contrast written as 4.5:1 is put into words on the way. The fixed words of the report come from a labels file, so any
 language works: en and nl ship with the skill, and for another one the first run writes
 report-labels.<code>.json into the workspace to be translated once (see labels.py).
 Findings are ordered within a tier by severity, then effort (S before L); reorder in the report if
@@ -63,12 +63,15 @@ def persona_rows(pdir: Path, t):
     rows = []
     for p in sorted(pdir.glob("*.md")) if pdir.is_dir() else []:
         name = p.stem.replace("-user", "")
-        section = None
+        section, seen = None, 0
         for line in p.read_text(encoding="utf-8").splitlines():
             if line.startswith("## "):
-                section = "flows" if "flow results" in line.lower() else None
+                section, seen = ("flows" if "flow results" in line.lower() else None), 0
                 continue
-            if section == "flows" and line.startswith("|") and not re.match(r"\|\s*-", line) and "Flow" not in line.split("|")[1]:
+            if section == "flows" and line.startswith("|"):
+                seen += 1
+                if seen <= 2:               # the header row and the rule under it, whatever language the header is in
+                    continue
                 cells = [c.strip() for c in line.strip("|").split("|")]
                 if len(cells) >= 4:
                     rows.append((cells[0], name, classify_result(cells[1], t), cells[3] or t["none"]))
@@ -76,15 +79,25 @@ def persona_rows(pdir: Path, t):
 
 
 
+TO1 = "{r} to 1"        # main() sets it from the labels of the report language
+
+
+def spoken(s: str) -> str:
+    """A contrast written as 4.5:1 put into words, outside code spans. Agents are told to write it in words; this catches the rest.
+    Anything of the shape N:1 is taken for a ratio, also a scale of 1:1; a time, an aspect ratio or a line and column are not."""
+    parts = re.split(r"(`[^`]*`)", s)
+    return "".join(p if p.startswith("`") else re.sub(r"(?<![A-Za-z0-9_.,:])(\d+(?:[.,]\d+)?):1(?![A-Za-z0-9_:])", lambda m: TO1.format(r=m.group(1)), p) for p in parts)
+
+
 def one(x, what):
     """Text on one line, or a marked gap when the finding does not have it."""
     s = re.sub(r"\s+", " ", str(x or "")).strip()
-    return s or WRITE.format(f"{what} is missing in the finding")
+    return spoken(s) or WRITE.format(f"{what} is missing in the finding")
 
 
 def cell(x):
     # a pipe would open a fifth column
-    return re.sub(r"\s+", " ", re.sub(r"\s*\|\s*", ", ", str(x if x is not None else ""))).strip()
+    return spoken(re.sub(r"\s+", " ", re.sub(r"\s*\|\s*", ", ", str(x if x is not None else ""))).strip())
 
 
 def where(f, t):
@@ -167,6 +180,8 @@ def main():
     a = ap.parse_args()
     ws = Path(a.workspace)
     t = load_labels(a.lang, ws)
+    global TO1
+    TO1 = t["to1"]
     data = json.loads((ws / "findings" / "_merged.json").read_text(encoding="utf-8"))
     dropped = [f.get("id") for f in data["findings"] if f.get("tier") not in (1, 2, 3)]
     findings = [f for f in data["findings"] if f.get("tier") in (1, 2, 3)]
@@ -205,13 +220,13 @@ def main():
         ups = [f for f in fs if f.get("fix", {}).get("ownership") == "upstream"]
         acc = [f for f in fs if f.get("fix", {}).get("ownership") == "accepted"]
         if ups:
-            own_lines += [f"### {t['upstream_h']} ({len(ups)})", ""] + [f"- {f['report_id']}: {f.get('fix', {}).get('location') or '?'}" for f in ups] + [""]
+            own_lines += [f"### {t['upstream_h']} ({len(ups)})", ""] + [f"- {f['report_id']}: {cell(f.get('fix', {}).get('location') or '?')}" for f in ups] + [""]
         if acc:
             own_lines += [f"### {t['accepted_h']} ({len(acc)})", ""]
             for f in acc:
                 ex = f.get("fix", {}).get("exception") or {}
                 tool = f" ({ex.get('tool')} {ex.get('rule')} on {ex.get('selector')})" if ex.get("rule") else ""
-                own_lines.append(f"- {f['report_id']}{tool}: {ex.get('reason') or f.get('fix', {}).get('summary') or '?'}")
+                own_lines.append(f"- {f['report_id']}{tool}: {cell(ex.get('reason') or f.get('fix', {}).get('summary') or '?')}")
             own_lines.append("")
         ownership[tier] = own_lines
     rows = persona_rows(ws / "personas", t)
@@ -226,7 +241,7 @@ def main():
             c = [x.strip() for x in l.strip("|").split("|")]
             if len(c) >= 7:
                 status = to_rep(c[4] + (f" ({c[5]})" if c[5] else ""))
-                cov_table.append(f"| {c[0]} | {c[1]} | {status_word(status)} | {(c[6] or t['none'])[:70]} |")
+                cov_table.append(f"| {c[0]} | {c[1]} | {status_word(status)} | {spoken(c[6] or t['none'])[:70]} |")
     full_table = [f"| {t['id']} | {t['source']} | {t['severity']} | {t['location']} |", "|---|---|---|---|"] + \
         [f"| {f['report_id']} | {', '.join(ids[f['report_id']]['source'])} | {sev(f)} | {loc(f)[:70]} |" for f in findings]
 
@@ -247,8 +262,8 @@ def main():
     project = ws.resolve().parent.name
     d = ["<!-- GENERATED DRAFT of the report. Copy it to REPORT.md, then:",
          "     1. write every part marked WRITE and delete the marker;",
-         "     2. translate the finding text (titles, problem, fix, verify) into the report language, keeping IDs, code,",
-         "        selectors, file paths and numbers exactly as they are;",
+         "     2. leave the finding text as it is: the agents wrote it in the report language. A finding in another language",
+         "        is corrected in its findings file and rendered again, not translated here;",
          "     3. do not retype or reorder tables and finding blocks: edit them in place, and keep every report ID;",
          "     4. delete this comment and run lint_report.py on the report until it exits 0.",
          f"     Facts: generated {date.today().isoformat()}; {len(findings)} findings; "
@@ -278,7 +293,7 @@ def main():
     for para in t["howto_p"]:
         d += [para, ""]
     positives = [x for xs in (data.get("positives") or {}).values() for x in xs if isinstance(x, str)]
-    d += [f"## {t['works']}", "", WRITE.format("keep the three to eight most specific of these, translated"), ""]
+    d += [f"## {t['works']}", "", WRITE.format("keep the three to eight most specific of these"), ""]
     d += [f"- {cell(x)}" for x in positives] or [t["nothing"]]
     d.append("")
 
@@ -354,7 +369,7 @@ def main():
             continue
         if isinstance(meta, dict) and meta:
             d.append("- " + t["method"].format(agent=p.stem, method=meta.get("method") or "?", n=len(meta.get("examined") or []),
-                                               skipped="; ".join(str(x) for x in meta.get("not_examined") or []) or t["none"]))
+                                               skipped=spoken("; ".join(str(x) for x in meta.get("not_examined") or [])) or t["none"]))
     cc = data.get("coverage_counts") or {}
     d += ["", f"### {t['appx']['b']}", "", t["cov_counts"].format(p=cc.get("pass", 0), f=cc.get("fail", 0), nt=cc.get("not-tested", 0),
                                                               na=cc.get("n/a", 0)), "", t["ann_cov"], ""] + cov_table
