@@ -7,11 +7,15 @@ Prints one line per gap and exits 1 while there is any, 0 when the phase is comp
 Run it at the end of the phase with that number:
 
   3  the baseline files and the stack profile are written, the briefs were built after the profile,
-     and a runtime scan (if there was one) left its summary and digest
+     and a runtime scan (if there was one) left its summary and, where it captured trees, a digest
   4  every expert named in briefs/_agents.json wrote a readable findings file with a status for each
-     criterion it owns, and the merge is newer than every findings file
+     criterion it owns (not-tested and n/a with a reason), and the merge is newer than every findings file
   5  the personas for this mode and the framework-maximizer reported, and the merge was run after them
-  6  the draft was rendered after the last merge, a re-audit has its delta, and REPORT.md passes lint_report.py
+  6  the merge is still newer than its inputs, the draft was rendered after it, a re-audit whose earlier
+     audit has a merge was merged with --previous, and REPORT.md passes lint_report.py
+
+It cannot tell this run's files from files an earlier run left in the workspace: moving an earlier audit
+aside before the run starts is what keeps the answers honest.
 
 A gate only looks at files: whether a finding is true is still for the orchestrator to verify. It does not
 count the "Problems to resolve" of the merge either: that list mixes what the merge corrected itself with
@@ -22,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -68,15 +73,17 @@ def manifest(ws: Path, gaps: list):
     return m
 
 
-def merged_is_current(ws: Path, gaps: list) -> None:
+def merged_is_current(ws: Path, gaps: list):
+    """The parsed merge, or None; a gap when it is missing or older than something it should contain."""
     mp = ws / "findings" / "_merged.json"
     merged = load(mp, gaps)
     if merged is None:
-        return
+        return None
     inputs = [p for p in (ws / "findings").glob("*.json") if p.name == "_dedupe.json" or not p.name.startswith("_")]
     stale = sorted(p.name for p in inputs + list((ws / "personas").glob("*.md")) if older(mp, p))
     if stale:
         gaps.append(f"findings/_merged.json is older than {', '.join(stale)}: run merge_findings.py again")
+    return merged
 
 
 def phase3(ws: Path, gaps: list) -> None:
@@ -86,7 +93,7 @@ def phase3(ws: Path, gaps: list) -> None:
     profile = ws / "stack-profile.md"
     if filled(profile):
         blank = [line.strip()[:60] for line in profile.read_text(encoding="utf-8", errors="replace").splitlines()
-                 if line.lstrip().startswith("-") and line.rstrip().endswith(": …")]
+                 if re.search(r": …(\s{2,}|$)|<…>", line)]
         if blank:
             gaps.append(f"stack-profile.md has {len(blank)} lines still holding the template's …, the first: {blank[0]}")
     m = manifest(ws, gaps)
@@ -97,14 +104,16 @@ def phase3(ws: Path, gaps: list) -> None:
             gaps.append(f"briefs missing for {', '.join(map(str, missing))}: run build_briefs.py again")
         if profile.is_file() and older(ws / "briefs" / "_agents.json", profile):
             gaps.append("stack-profile.md changed after the briefs were built: run build_briefs.py again, the briefs carry a copy of it")
-    digest = ws / "aria-digest.md"
-    if (ws / "automated").is_dir():
-        if not (ws / "automated" / "summary.json").is_file():
-            gaps.append("automated/ has no summary.json: the runtime scan did not finish")
-        if not filled(digest):
-            gaps.append("aria-digest.md is missing or empty although there is a runtime scan: run aria_digest.py")
-    elif digest.exists() and not filled(digest):
-        gaps.append("aria-digest.md is empty (no runtime scan): delete it, or the briefs point every agent at an empty file")
+    digest, auto = ws / "aria-digest.md", ws / "automated"
+    if auto.is_dir() and not (auto / "summary.json").is_file():
+        gaps.append("automated/ has no summary.json: the runtime scan did not finish. Run it again, or delete automated/ "
+                    "and go on static-only (say so in the method section)")
+    trees = auto.is_dir() and any(auto.glob("*.aria.yml"))
+    if trees and not filled(digest):
+        gaps.append("aria-digest.md is missing or empty although the scan left accessibility trees: run aria_digest.py")
+    elif not trees and digest.exists() and not filled(digest):
+        gaps.append("aria-digest.md is empty (there are no accessibility trees to digest): delete it and build the briefs again, "
+                    "or they point every agent at an empty file")
 
 
 def phase4(ws: Path, gaps: list) -> None:
@@ -121,7 +130,10 @@ def phase4(ws: Path, gaps: list) -> None:
         open_ = [sc for sc in owned if not isinstance(cov.get(sc), dict) or cov[sc].get("status") not in STATUSES]
         if open_:
             gaps.append(f"findings/{name}.json gives no status for {len(open_)} of its {len(owned)} criteria ({', '.join(open_)}): "
-                        f"each needs one of {', '.join(STATUSES)}; not-tested and n/a with a reason")
+                        f"each needs one of {', '.join(STATUSES)}")
+        bare = [sc for sc in owned if sc not in open_ and cov[sc]["status"] in ("not-tested", "n/a") and not str(cov[sc].get("note") or cov[sc].get("reason") or "").strip()]   # agents also write "reason"
+        if bare:
+            gaps.append(f"findings/{name}.json marks {', '.join(bare)} not-tested or n/a without a reason in the note")
     merged_is_current(ws, gaps)
 
 
@@ -141,13 +153,17 @@ def phase5(ws: Path, gaps: list) -> None:
 
 
 def phase6(ws: Path, gaps: list) -> None:
-    mp, draft, report = ws / "findings" / "_merged.json", ws / "REPORT.draft.md", ws / "REPORT.md"
-    if not mp.is_file() or not draft.is_file():
-        gaps.append("REPORT.draft.md or findings/_merged.json is missing: run render_report_parts.py")
-    elif older(draft, mp):
+    mp, draft, report, prev = ws / "findings" / "_merged.json", ws / "REPORT.draft.md", ws / "REPORT.md", ws / "previous"
+    merged = merged_is_current(ws, gaps)
+    if not draft.is_file():
+        gaps.append("REPORT.draft.md is missing: run render_report_parts.py")
+    elif mp.is_file() and older(draft, mp):
         gaps.append("REPORT.draft.md is older than findings/_merged.json: render again, the report would miss the last merge")
-    if (ws / "previous").is_dir() and not filled(ws / "delta.md"):
-        gaps.append("this is a re-audit (previous/ exists) but delta.md is missing: merge with --previous")
+    # only an earlier audit that got as far as a merge can be compared against
+    if merged and ((prev / "findings" / "_merged.json").is_file() or (prev / "_merged.json").is_file()):
+        if not merged.get("delta") or not filled(ws / "delta.md"):
+            gaps.append("this is a re-audit (previous/ holds a merge) but the last merge ran without --previous: "
+                        "merge again with it, so the delta is written")
     ids = load(ws / "report-ids.json", gaps)
     if not report.is_file():
         gaps.append("REPORT.md is missing")

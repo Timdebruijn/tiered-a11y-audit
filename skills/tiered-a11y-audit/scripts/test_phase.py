@@ -96,18 +96,24 @@ def test_phase_3_wants_the_baseline_the_profile_and_fresh_briefs():
     assert gaps(ws, "3") == [], gaps(ws, "3")
     (ws / "aria-digest.md").write_text("", encoding="utf-8")
     one(ws, "3", "aria-digest.md is empty")
-    (ws / "automated").mkdir()
-    assert [g.split(":")[0] for g in gaps(ws, "3")] == ["automated/ has no summary.json", "aria-digest.md is missing or empty although there is a runtime scan"]
+    (ws / "automated").mkdir()                                                 # a scan that died early: no summary, no trees
+    assert [g.split(":")[0] for g in gaps(ws, "3")] == ["automated/ has no summary.json", "aria-digest.md is empty (there are no accessibility trees to digest)"]
     (ws / "automated" / "summary.json").write_text("{}", encoding="utf-8")
+    (ws / "aria-digest.md").unlink()
+    assert gaps(ws, "3") == [], "a scan without trees needs no digest"
+    (ws / "automated" / "home.aria.yml").write_text("- main\n", encoding="utf-8")
+    one(ws, "3", "although the scan left accessibility trees")
     (ws / "aria-digest.md").write_text("# digest\n", encoding="utf-8")
     assert gaps(ws, "3") == []
     (ws / "briefs" / "operate.md").unlink()
-    one(ws, "3", "briefs missing for operate")
+    (ws / "briefs" / "deaf-user.md").unlink()
+    (ws / "briefs" / "framework-maximizer.md").unlink()
+    one(ws, "3", "briefs missing for operate, framework-maximizer, deaf-user")
     through_phase_3(ws)
     profile = ws / "stack-profile.md"
-    profile.write_text(profile.read_text(encoding="utf-8") + "- Router: …\n", encoding="utf-8")
+    profile.write_text(profile.read_text(encoding="utf-8") + "- Router: …        - Styling: Tailwind\n- Scope: <…>\n", encoding="utf-8")
     touch_after(profile, ws / "briefs" / "_agents.json")
-    assert {g[:24] for g in gaps(ws, "3")} == {"stack-profile.md changed", "stack-profile.md has 1 l"}, gaps(ws, "3")
+    assert {g[:24] for g in gaps(ws, "3")} == {"stack-profile.md changed", "stack-profile.md has 2 l"}, gaps(ws, "3")
 
 
 def test_phase_4_wants_every_expert_every_criterion_and_a_current_merge():
@@ -130,8 +136,19 @@ def test_phase_4_wants_every_expert_every_criterion_and_a_current_merge():
     merge(ws)
     one(ws, "4", "no status for 1 of its 23 criteria (2.1.2)")
 
+    data = json.loads(good)
+    data["sc_coverage"]["2.1.2"] = {"status": "n/a", "note": " "}
+    data["sc_coverage"]["2.1.4"] = {"status": "not-tested", "reason": "needs a runtime"}      # agents also write "reason"
+    f.write_text(json.dumps(data), encoding="utf-8")
+    merge(ws)
+    one(ws, "4", "marks 2.1.2 not-tested or n/a without a reason")
+
     f.write_text(good, encoding="utf-8")                                       # edited after the merge
     one(ws, "4", "older than operate.json")
+    merge(ws)
+    (ws / "findings" / "_dedupe.json").write_text("{}", encoding="utf-8")      # a merge decision the merge has not seen
+    one(ws, "4", "older than _dedupe.json")
+    merge(ws)
     f.write_text(good[:-20], encoding="utf-8")                                 # cut off mid-file
     merge(ws)
     one(ws, "4", "findings/operate.json is not valid JSON")
@@ -175,11 +192,47 @@ def test_phase_6_wants_a_current_draft_and_a_report_that_passes_the_linter():
     one(ws, "6", "REPORT.md has")
     (ws / "REPORT.md").write_text(re.sub(r"<!-- WRITE:.*?-->", "Written.", draft.split("-->", 1)[1].lstrip(), flags=re.S), encoding="utf-8")
     assert gaps(ws, "6") == [], gaps(ws, "6")
-    (ws / "previous").mkdir()
-    one(ws, "6", "delta.md is missing")
-    (ws / "delta.md").write_text("# delta\n", encoding="utf-8")
-    touch_after(ws / "findings" / "_merged.json", ws / "REPORT.draft.md")
-    one(ws, "6", "REPORT.draft.md is older")
+    own = ws / "findings" / "orchestrator.json"                               # found while verifying, not merged yet
+    own.write_text(json.dumps({"agent": "orchestrator", "findings": []}), encoding="utf-8")
+    one(ws, "6", "older than orchestrator.json")
+    own.unlink()
+    (ws / "previous" / "findings").mkdir(parents=True)                         # an earlier run that never reached a merge
+    assert gaps(ws, "6") == [], "nothing to compare against, so no delta can be demanded"
+    (ws / "previous" / "findings" / "_merged.json").write_text((ws / "findings" / "_merged.json").read_text(encoding="utf-8"), encoding="utf-8")
+    one(ws, "6", "the last merge ran without --previous")
+    script("merge_findings.py", ws, "--ownership", HERE.parent / "references" / "wcag-ownership.md", "--previous", ws / "previous")
+    assert (ws / "delta.md").is_file()
+    one(ws, "6", "REPORT.draft.md is older")                                   # the delta is there; the draft predates that merge
+
+
+def test_lean_mode_holds_a_file_to_the_criteria_of_both_its_lenses():
+    ws = workspace()
+    for name in ("stack-detect.md", "stack-profile.md", "pattern-inventory.md", "colour-pairs.md"):
+        (ws / name).write_text("- Mode: lean\n", encoding="utf-8")
+    script("build_briefs.py", HERE.parent, ws, "--lean")
+    (ws / "findings").mkdir()
+    for agent in ("structure-content", "keyboard-dynamic", "visual-perception", "forms-input"):
+        data = skeleton(ws, agent)
+        for sc in data["sc_coverage"]:
+            data["sc_coverage"][sc] = {"status": "pass", "note": ""}
+        (ws / "findings" / f"{agent}.json").write_text(json.dumps(data), encoding="utf-8")
+    merge(ws)
+    assert gaps(ws, "4") == [], gaps(ws, "4")
+    f = ws / "findings" / "keyboard-dynamic.json"
+    data = json.loads(f.read_text(encoding="utf-8"))
+    del data["sc_coverage"]["4.1.3"]                                           # owned by dynamic-content, the second lens
+    f.write_text(json.dumps(data), encoding="utf-8")
+    merge(ws)
+    one(ws, "4", "no status for 1 of its 11 criteria (4.1.3)")
+
+
+def test_the_skeletons_of_every_mode_cover_all_55_criteria_once():
+    for flag, n in (("--mini", 2), ("--lean", 4), (None, 6)):
+        ws = workspace()
+        script("build_briefs.py", HERE.parent, ws, *([flag] if flag else []))
+        m = json.loads((ws / "briefs" / "_agents.json").read_text(encoding="utf-8"))
+        owned = [sc for agent in m["experts"] for sc in skeleton(ws, agent)["sc_coverage"]]
+        assert len(m["experts"]) == n and len(owned) == len(set(owned)) == 55, (flag, len(owned))
 
 
 def test_exit_codes():

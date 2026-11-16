@@ -46,7 +46,7 @@ def skeleton(brief: str, lenses: list, owners: dict) -> str:
     cov = ",\n".join(f'    "{sc}": {{"status": "TODO", "note": ""}}' for sc in own)
     return (f"# Start of your findings file\n\nBegin `findings/{brief}.json` from the JSON below. It lists the {len(own)} criteria you own. "
             "Replace every TODO: a status is one of pass, fail (add \"findings\": [ids]), not-tested or n/a, the last two with the reason "
-            "in the note. The orchestrator's phase check refuses a file with a TODO or a missing criterion.\n\n```json\n"
+            "in the note. The orchestrator's phase check refuses a file in which a criterion is missing, still says TODO, or is not-tested or n/a without a note.\n\n```json\n"
             f'{{\n  "agent": "{brief}",\n  "lenses": {json.dumps(lenses)},\n'
             '  "coverage": {"method": "TODO", "examined": [], "not_examined": [], "notes": ""},\n'
             '  "positives": [],\n  "cross_lens_notes": [],\n'
