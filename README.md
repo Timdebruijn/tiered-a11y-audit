@@ -157,4 +157,4 @@ The most useful thing you can contribute is a run on a stack that has no run beh
 
 ## License
 
-MIT
+MIT. The full text is in the `LICENSE` file at the root of the repository.
