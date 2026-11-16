@@ -148,7 +148,7 @@ The next list gives every directory that matters, with what it holds.
 - `skills/tiered-a11y-audit/agents/experts/` holds the six lenses, the framework-maximizer, and the protocol they share.
 - `skills/tiered-a11y-audit/agents/personas/` holds the eight personas and the protocol they share.
 - `skills/tiered-a11y-audit/references/` holds the tiering rules, the finding schema, the criterion ownership table, the framework playbooks, the report template and the tooling notes.
-- `skills/tiered-a11y-audit/scripts/` holds the detector, the pattern scanner, the colour extractor, the contrast tool, the accessibility-tree digest, the runtime scan, the briefing builder, the merge and coverage script, and the report-table renderer.
+- `skills/tiered-a11y-audit/scripts/` holds the detector, the pattern scanner, the colour extractor, the contrast tool, the accessibility-tree digest, the runtime scan, the briefing builder, the merge and coverage script, and the renderer that writes the draft report.
 - `evals/` holds the four test cases with their fixture sites. It stays at the repository root, because that is where the evaluation runner looks.
 
 ## Contributing

@@ -107,6 +107,14 @@ def line_range(f):
 TIER_WORD = {"T1": 1, "T2": 2, "T3": 3, "1": 1, "2": 2, "3": 3, 1: 1, 2: 2, 3: 3}
 
 
+def tiers_of(f: dict):
+    """(tier that follows from visual_impact, tier the agent proposed): each 1, 2, 3 or None.
+    Agents write "T2" or "2" for a tier; left as text it used to crash the sort further down."""
+    vi, pt = f.get("visual_impact"), f.get("proposed_tier")
+    return (TIER_FROM_IMPACT.get(vi) if isinstance(vi, str) else None,
+            TIER_WORD.get(pt) if isinstance(pt, (str, int)) else None)
+
+
 def coerce_shape(f, agent: str, seq: int, problems: list):
     """Make one finding safe for every later stage, or return None to drop it.
 
@@ -395,13 +403,15 @@ def main():
             f["agent"] = agent
             verify_claims(f, owners, repo, problems)
             vi = f.get("visual_impact")
-            derived = TIER_FROM_IMPACT.get(vi)
+            derived, proposed = tiers_of(f)
             if derived is None:
-                problems.append(f"{f.get('id')}: visual_impact missing/invalid ({vi!r}); tier left as proposed")
-                f["tier"] = f.get("proposed_tier")
+                problems.append(f"{f.get('id')}: visual_impact missing/invalid ({vi!r}); tier left as proposed"
+                                + ("" if proposed else f", but proposed_tier {f.get('proposed_tier')!r} is not a tier either: "
+                                                       "this finding is in no tier and will be in no table"))
+                f["tier"] = proposed
             else:
                 f["tier"] = derived
-                if f.get("proposed_tier") not in (None, derived):
+                if proposed not in (None, derived):
                     problems.append(f"{f.get('id')}: proposed_tier {f.get('proposed_tier')} != tier {derived} from visual_impact {vi!r}; using {derived}")
             own = f["fix"].get("ownership")
             if own not in ("project", "override", "upstream", "accepted"):
@@ -416,7 +426,8 @@ def main():
         if f is None:
             continue
         verify_claims(f, owners, repo, problems)
-        f["tier"] = TIER_FROM_IMPACT.get(f.get("visual_impact")) or f.get("proposed_tier")
+        derived, proposed = tiers_of(f)
+        f["tier"] = derived or proposed
         if not f.get("fingerprint"):
             problems.append(f"{f['id']}: no fingerprint; generated from title+file")
             f["fingerprint"] = re.sub(r"[^a-z0-9]+", "-", f["title"].lower())[:40] + "@" + norm_file(f)
@@ -493,7 +504,8 @@ def main():
                 resolved_targets.append(canon)
         f["is_leverage_entry"] = True
         leverage_entries.append({"id": f["id"], "title": f.get("title"), "location": lev.get("location") or f.get("fix", {}).get("location"),
-                                 "resolves": sorted(set(resolved_targets)), "note": lev.get("note")})
+                                 "resolves": sorted(set(resolved_targets)), "note": lev.get("note"),
+                                 "effort": f.get("effort")})
     merged = [f for f in merged if not f.get("is_leverage_entry")]
     leverage_entries.sort(key=lambda e: -len(e["resolves"]))
 
