@@ -10,7 +10,10 @@ Writes findings/_merged.json   all findings, duplicates merged (exact fingerprin
        findings/_merged.md     one line per finding (ID · tier · severity · title · location) + candidate-duplicate groups
        coverage.md             WCAG 2.2 A/AA matrix (55 criteria) from owners' sc_coverage, with counts and conflicts
        delta.md                with --previous: resolved / still open / regressed / new, matched on fingerprint
-Prints a short summary. Pure standard library; never touches the repo.
+Checks what a finding claims against what a script can look up: the cited file, lines and snippet
+exist in the repository; the criterion is a WCAG 2.2 A or AA one, with its name and level taken from the
+ownership table; stated contrast ratios are recomputed. Whatever does not hold goes into the problems list.
+Prints a short summary. Pure standard library; reads the repo, never writes to it.
 """
 from __future__ import annotations
 
@@ -20,6 +23,9 @@ import re
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from contrast import parse as parse_colour, ratio as contrast_ratio  # noqa: E402
 
 SEVERITY_ORDER = {"blocker": 0, "critical": 1, "serious": 2, "moderate": 3, "minor": 4}
 TIER_FROM_IMPACT = {"none": 1, "keyboard-only": 1, "preference-only": 1, "subtle": 2, "significant": 3}
@@ -153,6 +159,83 @@ def coerce_shape(f, agent: str, seq: int, problems: list):
     return f
 
 
+def squash(s: str) -> str:
+    """Whitespace collapsed and backslashes dropped, so a snippet quoted from HTML inside a
+    C++ or JS string still matches the escaped source."""
+    return re.sub(r"\s+", " ", s.replace("\\", "")).strip()
+
+
+def verify_claims(f: dict, owners: dict, repo: Path, problems: list) -> None:
+    """Hold a finding against what can be looked up instead of trusted.
+
+    A language model wrote these fields. It misremembers levels (2.4.9 as level A), cites
+    lines it never opened and does contrast arithmetic in its head. None of that needs
+    judgement to catch, so none of it should reach the orchestrator unflagged."""
+    fid = f["id"]
+
+    # Criterion: the ownership table is the authority on which criteria count and on their names.
+    for sc in f["wcag"]:
+        m = re.search(r"\d\.\d\.\d+", str(sc.get("sc") or ""))
+        num = m.group(0) if m else str(sc.get("sc") or "?")
+        sc["sc"] = num
+        meta = owners.get(num)
+        if meta is None:
+            problems.append(f"{fid}: {num} is not a WCAG 2.2 level A or AA criterion (AAA, obsolete or mistyped); "
+                            "cite the A or AA criterion if one applies, it is what the coverage matrix counts")
+            continue
+        if sc.get("level") not in (None, meta["level"]):
+            problems.append(f"{fid}: {num} given as level {sc['level']}, it is level {meta['level']}; corrected")
+        sc["name"], sc["level"] = meta["name"], meta["level"]
+    if not f["wcag"] and f.get("best_practice_only") is not True:
+        problems.append(f"{fid}: no WCAG criterion and not marked best_practice_only; cite one or set the marker")
+
+    # Evidence: the file, the lines and the snippet have to exist. URL-and-selector evidence is runtime, not checked.
+    for ev in f.get("evidence") or []:
+        if not isinstance(ev, dict) or not ev.get("file"):
+            continue
+        rel = re.sub(r":\d+(-\d+)?$", "", str(ev["file"]).strip())   # "index.html:12" is a common slip
+        path = (repo / rel).resolve()
+        if not path.is_relative_to(repo) or not path.is_file():
+            problems.append(f"{fid}: evidence file {rel!r} not found in the repository")
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        total = text.count("\n") + 1
+        m = re.match(r"\s*(\d+)\s*(?:-\s*(\d+))?", str(ev.get("lines") or ""))
+        if m and max(int(m.group(1)), int(m.group(2) or 0)) > total:
+            problems.append(f"{fid}: evidence lines {ev['lines']} are past the end of {rel} ({total} lines)")
+        if isinstance(ev.get("snippet"), str):
+            hay = squash(text)
+            # an agent may abbreviate with an ellipsis; every part it did quote must be there
+            parts = [squash(part) for part in re.split(r"…|\.\.\.", ev["snippet"])]
+            gone = [part for part in parts if len(part) >= 8 and part not in hay]
+            if gone:
+                problems.append(f"{fid}: snippet not found in {rel}: {gone[0][:60]!r}")
+
+    # Contrast: recompute, never trust the stated ratio.
+    col = f.get("colours")
+    if isinstance(col, dict) and col.get("fg") and col.get("bg"):
+        for fg_key, ratio_key in (("fg", "ratio"), ("suggested_fg", "suggested_ratio")):
+            if not col.get(fg_key):
+                continue
+            try:
+                real = round(contrast_ratio(parse_colour(str(col[fg_key])), parse_colour(str(col["bg"]))), 2)
+            except ValueError as e:
+                problems.append(f"{fid}: colours.{fg_key} cannot be measured ({e})")
+                continue
+            stated = col.get(ratio_key)
+            if isinstance(stated, (int, float)) and abs(stated - real) > 0.05:
+                problems.append(f"{fid}: colours.{ratio_key} stated as {stated}, {col[fg_key]} on {col['bg']} "
+                                f"measures {real}; corrected")
+            col[ratio_key] = real
+        need = col.get("required")
+        if isinstance(need, (int, float)):
+            if isinstance(col.get("ratio"), float) and col["ratio"] >= need:
+                problems.append(f"{fid}: measured contrast {col['ratio']} already meets the required {need}; "
+                                "this may not be a failure")
+            if isinstance(col.get("suggested_ratio"), float) and col["suggested_ratio"] < need:
+                problems.append(f"{fid}: the suggested colour reaches {col['suggested_ratio']}, short of the required {need}")
+
+
 def normalise_persona_finding(raw: dict, persona: str, problems: list, seq: int = 0) -> dict:
     """Personas drift from the schema; map the common deviations and flag them."""
     f = dict(raw)
@@ -268,8 +351,11 @@ def main():
     ap.add_argument("workspace", help="path to .a11y-audit")
     ap.add_argument("--ownership", required=True, help="path to references/wcag-ownership.md")
     ap.add_argument("--previous", help="re-audit: path holding the previous findings/_merged.json (e.g. .a11y-audit/previous)")
+    ap.add_argument("--repo", help="directory that evidence paths are relative to (default: the parent of the workspace); "
+                                   "set it when the audit scope is a subdirectory such as apps/web")
     a = ap.parse_args()
     ws = Path(a.workspace)
+    repo = Path(a.repo).resolve() if a.repo else ws.resolve().parent
     fdir = ws / "findings"
     agents = load_findings(fdir)
     if not agents:
@@ -307,6 +393,7 @@ def main():
             if f is None:
                 continue
             f["agent"] = agent
+            verify_claims(f, owners, repo, problems)
             vi = f.get("visual_impact")
             derived = TIER_FROM_IMPACT.get(vi)
             if derived is None:
@@ -328,6 +415,7 @@ def main():
         f = coerce_shape(raw, raw.get("agent", "persona"), seq, problems)
         if f is None:
             continue
+        verify_claims(f, owners, repo, problems)
         f["tier"] = TIER_FROM_IMPACT.get(f.get("visual_impact")) or f.get("proposed_tier")
         if not f.get("fingerprint"):
             problems.append(f"{f['id']}: no fingerprint; generated from title+file")
@@ -537,7 +625,7 @@ def main():
         lines += ["", "## Accepted exceptions (ownership: accepted)", ""]
         lines += [f"- {e['id']} · {e.get('tool', '')} {e.get('rule', '')} {e.get('selector', '')} · {e.get('reason', '')}".replace("  ", " ") for e in exceptions]
     if problems:
-        lines += ["", "## Schema problems", ""] + [f"- {p}" for p in problems]
+        lines += ["", "## Problems to resolve (schema and unverified claims)", ""] + [f"- {p}" for p in problems]
     (fdir / "_merged.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     cov = ["# WCAG 2.2 A/AA coverage (55 criteria)", "",
@@ -585,7 +673,7 @@ def main():
             problems.append(f"--previous given but {prev_path} not found")
 
     print(f"{len(all_findings)} raw findings from {len(agents)} agents (+{len(persona_findings)} from personas) → {len(merged)} merged; "
-          f"{len(cand)} root-cause clusters; coverage {dict(counts)}; {len(conflicts)} conflicts; {len(problems)} schema problems")
+          f"{len(cand)} root-cause clusters; coverage {dict(counts)}; {len(conflicts)} conflicts; {len(problems)} problems")
     all_users = [f["id"] for f in merged if f.get("affects_all_users")]
     if all_users:
         print("affects all users: " + ", ".join(all_users))

@@ -120,6 +120,97 @@ def test_missing_ownership_file_is_reported():
         assert "does not exist" in r.stderr, r.stderr
 
 
+SOURCE = """<header>
+  <a class="more" href="/news">Lees meer</a>
+  <div class="menu" onclick="toggle()">Menu</div>
+</header>
+"""
+
+
+def finding(fid, **over):
+    """A finding that is true of SOURCE; each test case overrides the one field it gets wrong."""
+    f = {"id": fid, "fingerprint": f"{fid.lower()}@src/page.html", "title": f"Finding {fid}", "severity": "serious",
+         "evidence": [{"file": "src/page.html", "lines": "3", "snippet": '<div class="menu" onclick="toggle()">'}],
+         "wcag": [{"sc": "2.1.1", "name": "Keyboard", "level": "A"}],
+         "visual_impact": "none", "proposed_tier": 1, "fix": {"ownership": "project", "summary": "Use a button."},
+         "effort": "S", "confidence": "high", "verify": "Tab to it."}
+    f.update(over)
+    return f
+
+
+def claims_workspace(d, findings):
+    ws = workspace(d, {"orchestrator.json": {"agent": "orchestrator", "findings": findings}})
+    (Path(d) / "src").mkdir()
+    (Path(d) / "src" / "page.html").write_text(SOURCE, encoding="utf-8")
+    return ws
+
+
+def problems_of(ws, fid):
+    r = merge(ws)
+    assert r.returncode == 0, r.stderr
+    merged = json.loads((ws / "findings" / "_merged.json").read_text())
+    return [p for p in merged["problems"] if p.startswith(fid + ":")], merged
+
+
+def test_true_claims_raise_no_problems():
+    # The checks are only worth having if a correct finding passes them silently.
+    with tempfile.TemporaryDirectory() as d:
+        ws = claims_workspace(d, [
+            finding("OK-001"),
+            finding("OK-002", wcag=[], best_practice_only=True),
+            finding("OK-003", evidence=[{"file": "src/page.html", "lines": "2-3",
+                                         "snippet": '<a class="more" ... Lees meer</a>'}]),
+            finding("OK-004", wcag=[{"sc": "1.4.3", "name": "Contrast (Minimum)", "level": "AA"}],
+                    colours={"fg": "#9a9a9a", "bg": "#ffffff", "ratio": 2.81, "required": 4.5,
+                             "suggested_fg": "#767676", "suggested_ratio": 4.54}),
+            finding("OK-005", evidence=[{"url": "http://localhost:3000/", "selector": "#menu"}]),
+        ])
+        r = merge(ws)
+        merged = json.loads((ws / "findings" / "_merged.json").read_text())
+        assert merged["problems"] == [], f"correct findings were flagged: {merged['problems']}"
+
+
+def test_false_claims_are_flagged():
+    cases = {
+        "evidence file that does not exist": (finding("BAD-001", evidence=[{"file": "nope/missing.tsx", "lines": "9"}]),
+                                              "not found in the repository"),
+        "evidence outside the repository": (finding("BAD-002", evidence=[{"file": "../../etc/hosts", "lines": "1"}]),
+                                            "not found in the repository"),
+        "lines past the end of the file": (finding("BAD-003", evidence=[{"file": "src/page.html", "lines": "900-950"}]),
+                                           "past the end"),
+        "snippet that is not in the file": (finding("BAD-004", evidence=[{"file": "src/page.html", "lines": "3",
+                                                                          "snippet": "<button disabled>Send</button>"}]),
+                                            "snippet not found"),
+        "triple-A criterion only": (finding("BAD-005", wcag=[{"sc": "2.4.9", "name": "Link Purpose (Link Only)", "level": "AAA"}]),
+                                    "not a WCAG 2.2 level A or AA criterion"),
+        "no criterion and no best-practice marker": (finding("BAD-006", wcag=[]), "not marked best_practice_only"),
+        "contrast ratio from memory": (finding("BAD-007", colours={"fg": "#9a9a9a", "bg": "#ffffff", "ratio": 3.9, "required": 4.5}),
+                                       "measures 2.81"),
+        "contrast that already passes": (finding("BAD-008", colours={"fg": "#595959", "bg": "#ffffff", "ratio": 3.0, "required": 4.5}),
+                                         "may not be a failure"),
+        "suggested colour that still fails": (finding("BAD-009", colours={"fg": "#9a9a9a", "bg": "#ffffff", "ratio": 2.81,
+                                                                           "required": 4.5, "suggested_fg": "#8a8a8a"}),
+                                              "short of the required"),
+    }
+    for label, (bad, expect) in cases.items():
+        with tempfile.TemporaryDirectory() as d:
+            ws = claims_workspace(d, [bad])
+            mine, _ = problems_of(ws, bad["id"])
+            assert any(expect in p for p in mine), f"{label}: expected {expect!r}, got {mine}"
+        print("   flagged:", label)
+
+
+def test_level_and_ratio_are_corrected_in_the_output():
+    with tempfile.TemporaryDirectory() as d:
+        ws = claims_workspace(d, [finding("FIX-001", wcag=[{"sc": "2.4.4", "name": "Link purpose", "level": "AAA"}],
+                                          colours={"fg": "#9a9a9a", "bg": "#ffffff", "ratio": 4.9, "required": 4.5})])
+        mine, merged = problems_of(ws, "FIX-001")
+        f = merged["findings"][0]
+        assert f["wcag"][0] == {"sc": "2.4.4", "name": "Link Purpose (In Context)", "level": "A"}, f["wcag"]
+        assert f["colours"]["ratio"] == 2.81, f["colours"]
+        assert any("level AAA, it is level A" in p for p in mine), mine
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):
