@@ -92,7 +92,7 @@ The three that the grader counts as missed are criterion-attribution failures ra
 
 ### Nearly a fifth of findings carried no criterion at all
 
-8 of 42 findings, which is 19 percent, named no success criterion, and the merge script did not flag a single one of them. Its list of problems came back empty. The skill's own ground rules require either a criterion or an explicit best-practice marker on every finding, so this is a real gap in the schema check, and it is what cost two of the three detections above.
+8 of 42 findings, which is 19 percent, named no success criterion, and the merge script did not flag a single one of them. Its list of problems came back empty. The skill's own ground rules require either a criterion or an explicit best-practice marker on every finding, so this is a real gap in the schema check, and it is what cost two of the three detections above. The merge script has since been taught to flag it: a finding without a criterion and without the marker, a criterion that is triple-A only, a citation that does not exist in the repository and a contrast ratio that does not match its colours are now all listed as problems to resolve. No run has been measured with that check in place yet.
 
 ### Four findings landed one tier off
 
