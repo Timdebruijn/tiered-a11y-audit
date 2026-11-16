@@ -274,7 +274,7 @@ Exports, on request or when the context calls for them (a team that works from t
 - `scripts/preflight.py` — Phase 0 in one read-only command (git and ignore status, earlier audit or unfinished run, audit size, tools, detector output); with `--start` the workspace set-up, re-audit rotation and ignore lines.
 - `scripts/extract_colors.py` — colour tokens per scheme and failing foreground/background pairs.
 - `scripts/aria_digest.py` — per-view digest of the accessibility trees: landmarks, headings, nameless controls, duplicate names.
-- `scripts/build_briefs.py` — one briefing file per subagent, each expert's with the start of its findings file, and the list of agents for the phase check.
+- `scripts/build_briefs.py` — one briefing file per subagent with only the reference parts that agent acts on, each lens's with the start of its findings file, and the list of agents for the phase check.
 - `scripts/check_phase.py` — the phase check: what phases 3, 4, 5 and 6 must have left before the next one starts.
 - `scripts/merge_findings.py` — merges findings, derives tiers, clusters root causes, links persona verdicts, builds the coverage matrix, re-audit delta.
 - `scripts/render_report_parts.py` — generates the draft report (every table, finding block and appendix, with consistent report IDs and the gaps for prose marked).
