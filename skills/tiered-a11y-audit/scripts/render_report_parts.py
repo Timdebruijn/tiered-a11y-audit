@@ -63,12 +63,15 @@ def persona_rows(pdir: Path, t):
     rows = []
     for p in sorted(pdir.glob("*.md")) if pdir.is_dir() else []:
         name = p.stem.replace("-user", "")
-        section = None
+        section, seen = None, 0
         for line in p.read_text(encoding="utf-8").splitlines():
             if line.startswith("## "):
-                section = "flows" if "flow results" in line.lower() else None
+                section, seen = ("flows" if "flow results" in line.lower() else None), 0
                 continue
-            if section == "flows" and line.startswith("|") and not re.match(r"\|\s*-", line) and "Flow" not in line.split("|")[1]:
+            if section == "flows" and line.startswith("|"):
+                seen += 1
+                if seen <= 2:               # the header row and the rule under it, whatever language the header is in
+                    continue
                 cells = [c.strip() for c in line.strip("|").split("|")]
                 if len(cells) >= 4:
                     rows.append((cells[0], name, classify_result(cells[1], t), cells[3] or t["none"]))
@@ -80,9 +83,10 @@ TO1 = "{r} to 1"        # main() sets it from the labels of the report language
 
 
 def spoken(s: str) -> str:
-    """A contrast written as 4.5:1 put into words, outside code spans. Agents are told to write it in words; this catches the rest."""
+    """A contrast written as 4.5:1 put into words, outside code spans. Agents are told to write it in words; this catches the rest.
+    Anything of the shape N:1 is taken for a ratio, also a scale of 1:1; a time, an aspect ratio or a line and column are not."""
     parts = re.split(r"(`[^`]*`)", s)
-    return "".join(p if p.startswith("`") else re.sub(r"(?<![\w.,:])(\d+(?:[.,]\d+)?):1(?![\w:])", lambda m: TO1.format(r=m.group(1)), p) for p in parts)
+    return "".join(p if p.startswith("`") else re.sub(r"(?<![A-Za-z0-9_.,:])(\d+(?:[.,]\d+)?):1(?![A-Za-z0-9_:])", lambda m: TO1.format(r=m.group(1)), p) for p in parts)
 
 
 def one(x, what):
@@ -216,13 +220,13 @@ def main():
         ups = [f for f in fs if f.get("fix", {}).get("ownership") == "upstream"]
         acc = [f for f in fs if f.get("fix", {}).get("ownership") == "accepted"]
         if ups:
-            own_lines += [f"### {t['upstream_h']} ({len(ups)})", ""] + [f"- {f['report_id']}: {f.get('fix', {}).get('location') or '?'}" for f in ups] + [""]
+            own_lines += [f"### {t['upstream_h']} ({len(ups)})", ""] + [f"- {f['report_id']}: {cell(f.get('fix', {}).get('location') or '?')}" for f in ups] + [""]
         if acc:
             own_lines += [f"### {t['accepted_h']} ({len(acc)})", ""]
             for f in acc:
                 ex = f.get("fix", {}).get("exception") or {}
                 tool = f" ({ex.get('tool')} {ex.get('rule')} on {ex.get('selector')})" if ex.get("rule") else ""
-                own_lines.append(f"- {f['report_id']}{tool}: {ex.get('reason') or f.get('fix', {}).get('summary') or '?'}")
+                own_lines.append(f"- {f['report_id']}{tool}: {cell(ex.get('reason') or f.get('fix', {}).get('summary') or '?')}")
             own_lines.append("")
         ownership[tier] = own_lines
     rows = persona_rows(ws / "personas", t)
@@ -237,7 +241,7 @@ def main():
             c = [x.strip() for x in l.strip("|").split("|")]
             if len(c) >= 7:
                 status = to_rep(c[4] + (f" ({c[5]})" if c[5] else ""))
-                cov_table.append(f"| {c[0]} | {c[1]} | {status_word(status)} | {(c[6] or t['none'])[:70]} |")
+                cov_table.append(f"| {c[0]} | {c[1]} | {status_word(status)} | {spoken(c[6] or t['none'])[:70]} |")
     full_table = [f"| {t['id']} | {t['source']} | {t['severity']} | {t['location']} |", "|---|---|---|---|"] + \
         [f"| {f['report_id']} | {', '.join(ids[f['report_id']]['source'])} | {sev(f)} | {loc(f)[:70]} |" for f in findings]
 
@@ -365,7 +369,7 @@ def main():
             continue
         if isinstance(meta, dict) and meta:
             d.append("- " + t["method"].format(agent=p.stem, method=meta.get("method") or "?", n=len(meta.get("examined") or []),
-                                               skipped="; ".join(str(x) for x in meta.get("not_examined") or []) or t["none"]))
+                                               skipped=spoken("; ".join(str(x) for x in meta.get("not_examined") or [])) or t["none"]))
     cc = data.get("coverage_counts") or {}
     d += ["", f"### {t['appx']['b']}", "", t["cov_counts"].format(p=cc.get("pass", 0), f=cc.get("fail", 0), nt=cc.get("not-tested", 0),
                                                               na=cc.get("n/a", 0)), "", t["ann_cov"], ""] + cov_table

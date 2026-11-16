@@ -67,7 +67,7 @@ Every expert agent writes one JSON file: `.a11y-audit/findings/<agent>.json`.
 
 ## Field rules
 
-Language: the text a person reads (`title`, `description`, `fix.summary`, `fix.side_effects`, `fix.framework_idiom`, `verify`, `tier_rationale`, `positives`, notes) is written in the report language from the stack profile. Everything else, the values a script reads, stays exactly as spelled here.
+Language: the text a person reads (`title`, `description`, `fix.summary`, `fix.side_effects`, `fix.framework_idiom`, `verify`, `tier_rationale`, `positives`, notes) is written in the report language from the stack profile. Everything else, the values a script reads, stays exactly as spelled here. That includes the slug in `fingerprint`: it is English in every language, because two findings and two audits are matched on it.
 
 - `id`: agent prefix + three digits. Prefixes: `SEM` semantics-structure, `KBD` keyboard-focus, `VIS` visual-perception, `FRM` forms-input, `DYN` dynamic-content, `CNT` content-media, `FWK` framework-maximizer, `PER-<persona>` for new findings from personas, `ORC` for findings the orchestrator makes itself during verification (written to `findings/orchestrator.json`, same schema). IDs are per run; use `fingerprint` to match across runs.
 - `fingerprint`: `<problem-slug>@<root-cause path or selector>`, stable across runs: lowercase slug of the problem type (`missing-accessible-name`, `contrast-text`, `focus-not-visible`, `no-route-announcement`, `placeholder-only-label`, `keyboard-inoperable`, …) plus the highest-leverage location. Two findings with the same fingerprint are the same finding. Re-audits compare on this field.

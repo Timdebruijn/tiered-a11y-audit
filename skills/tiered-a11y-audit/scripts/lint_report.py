@@ -115,7 +115,7 @@ def lint(text: str, ids: dict | None = None) -> list:
                           ("middle dot", [c for c in line if c in DOTS])):
             if bad:
                 out.append((n, "symbol", f"{kind} ({' '.join(sorted(set(bad)))}): say it in words"))
-        for r in re.findall(r"(?<![\w.,:])\d+(?:[.,]\d+)?:1(?![\w:])", line):
+        for r in re.findall(r"(?<![A-Za-z0-9_.,:])\d+(?:[.,]\d+)?:1(?![A-Za-z0-9_:])", line):
             out.append((n, "symbol", f'ratio written as {r}: write "{r[:-2]} to 1" in the report language'))
         for word in line.split():
             w = word.strip("()[]{}<>\"'*_,;:.!?|")
