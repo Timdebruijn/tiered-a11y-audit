@@ -21,7 +21,7 @@ Everything merged after 1.0, with the pull request it came in. The version in `.
 
 ### Round 10 — the first measured run (2026-11-15)
 - The repository is a loadable plugin: `.claude-plugin/plugin.json`, the skill under `skills/tiered-a11y-audit/`, `evals/` at the root. Before this the eval cases could not run at all (#3).
-- `grade_findings.py` no longer scores items it cannot grade: a ground-truth item without keywords is reported as ungradable and left out of both denominators, and four crashes on unusual input are gone (#4).
+- `grade_findings.py` no longer scores items it cannot grade: a ground-truth item without keywords is reported as ungradable and left out of both denominators, a should-pass item flagged twice is counted once, and three crashes on unusual input are gone (#4).
 - The README gives the measured detection rate, 21 of 24 seeded failures, with what the number overstates and understates, instead of a promise to measure (#5).
 - README: install link corrected after the move (#6), and the whole text rewritten to the skill's own read-aloud rules (#7).
 
