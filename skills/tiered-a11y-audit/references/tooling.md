@@ -18,7 +18,13 @@ python3 "SKILL_DIR"/scripts/preflight.py <repo-root>                            
 python3 "SKILL_DIR"/scripts/preflight.py <repo-root> --start [--ignore all|report]
 ```
 
-The first form writes nothing and prints: git repository or not, whether `.a11y-audit/` is ignored and by which rule (it asks git, so a global ignore file counts), an earlier audit, the number of project-owned UI files with the audit size it suggests, run scripts, node, an installed browser, a scratch directory under the system's temp folder, and the detector's output. The second form creates the workspace, writes `stack-detect.md`, and in a re-audit moves everything of the earlier audit into `previous/` except `report-labels.<code>.json`; an existing `previous/` becomes `previous-<timestamp>/`. `--ignore all` adds `.a11y-audit/` to `.gitignore`, `--ignore report` adds `.a11y-audit/*` with exceptions for `REPORT.md` and `coverage.md`; lines already present are not added again, and `--ignore` without `--start` is refused. The browser check knows a fixed list of names and the macOS application folder, so a browser installed elsewhere reads as not found. `python3 scripts/test_preflight.py` checks all of this.
+The first form writes nothing and prints: git repository yes, no, or unknown with the reason (git missing, or git refusing the folder); whether `.a11y-audit/` is ignored, asked of git for a findings file, a screenshot and the stack profile, so `yes` means all three and `partly` means some would be committed (a global ignore file counts, a negated rule does not); the state of the workspace (none, a finished audit, an unfinished run, or not a plain directory); the number of project-owned UI files with the audit size it suggests; run scripts; node; an installed browser; a scratch directory under the system's temp folder; and the detector's output.
+
+The second form creates the workspace and writes `stack-detect.md`. A workspace with a `REPORT.md` is a finished audit: everything in it except `report-labels.<code>.json` moves into `previous/`, and an existing `previous/` becomes `previous-<timestamp>/`. A workspace without a `REPORT.md` is a run in progress and stays; `--fresh` moves it aside too. A workspace that is a file or a symbolic link is refused with exit 2.
+
+`--ignore all` appends `.a11y-audit/` to `.gitignore`, `--ignore report` appends `.a11y-audit/*` with exceptions for `REPORT.md` and `coverage.md`. It only appends, in the file's own line endings, and adds a line once. It adds nothing when a line already ignores the whole folder, says so when that makes `report` impossible, and leaves a symlinked `.gitignore` alone. `--ignore` and `--fresh` are refused without `--start`.
+
+The browser check knows a fixed list of names and the macOS application folder, so a browser installed elsewhere reads as not found. `python3 scripts/test_preflight.py` checks all of this.
 
 ## Running `scripts/axe_scan.mjs`
 

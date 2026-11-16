@@ -105,7 +105,7 @@ Everything here is cheap and needs no input, so do it before asking anything.
    ```
    python3 "SKILL_DIR"/scripts/preflight.py <repo-root>
    ```
-   Its first lines answer what Phase 1 needs: whether this is a git repository and whether `.a11y-audit/` is already ignored (then skip question 1), whether an earlier audit is present (then this is a re-audit), the number of project-owned UI files and the audit size that suggests, the run scripts in `package.json`, whether node and an installed browser are available, and a scratch directory outside the repository to offer. Below that comes the detector's output: frameworks, UI/chart/animation libraries, styling, routing (or its absence), i18n, a11y tooling, suppressed a11y lint rules, UIs embedded in source strings, a CSP, and infra templates it ignored.
+   Its first lines answer what Phase 1 needs: whether this is a git repository and whether `.a11y-audit/` is ignored ("yes" means every kind of file in it, then skip question 1; "partly" means ask it), whether a finished earlier audit is in the workspace (then this is a re-audit) or an unfinished run (then go on with it, unless the user wants to begin again), the number of project-owned UI files and the audit size that suggests, the run scripts in `package.json`, whether node and an installed browser are available, and a scratch directory outside the repository to offer. Below that comes the detector's output: frameworks, UI/chart/animation libraries, styling, routing (or its absence), i18n, a11y tooling, suppressed a11y lint rules, UIs embedded in source strings, a CSP, and infra templates it ignored.
 2. From that output decide: no UI at all → stop and ask what to audit; the "Scope" line gives project-owned UI files (vendored themes and build output excluded): ≤ 10 → mini candidate (confirm after `scan_patterns.py` in Phase 3 shows few interactive widgets), ≤ 25 → lean, otherwise full. Packages listed under "Found only in vendored code" are not the project's stack; read the playbook for the generator or framework the project actually uses. Note the package scripts / compose files / SSG commands that could start a dev server, and whether a browser tool is available in this session (Playwright via a scratch dir, a Playwright or Chrome MCP, or nothing).
 
 ## Phase 1 — One message to the user
@@ -116,18 +116,18 @@ One message, at most five numbered questions, one line each, each with its defau
 I found a React + Vite app with 18 UI files; a lean audit fits (about 7 agents, 15–20 minutes). Questions, defaults in brackets, "ok" accepts all:
 1. Add .a11y-audit/ to .gitignore? It holds screenshots and code snippets. [yes, ignore all; or: keep REPORT.md trackable]
 2. Runtime: start `npm run dev` myself? [yes; or give me a URL; or static only]
-3. Install Playwright + axe in a scratch folder outside the repo (uses your installed Chrome)? [yes]
+3. Install Playwright + axe in a scratch folder outside the repo? Chrome is installed, so no browser download. [yes]
 4. Treat the running app as read-only? [yes; or name a disposable instance and allowed actions]
 5. Key flows: overview, graphs, targets editor, alerts, access. [ok]
 ```
 
-The gitignore line is the one edit this skill makes to a repo, only with this permission (options: `.a11y-audit/` for everything, or `.a11y-audit/*` plus `!.a11y-audit/REPORT.md` and `!.a11y-audit/coverage.md` to keep the report trackable). Mention cost in the first line, not as a paragraph. Only mention legal context (EN 301 549 / EAA / public sector) if the user or the repo brings it up. In question 3 name what the preflight found: the installed browser, or that Playwright downloads one of about 150 MB. Wait for the answer, then set the workspace up in one command, with `--ignore` only if the user agreed to it (`all`, or `report` to keep the report trackable):
+The gitignore line is the one edit this skill makes to a repo, only with this permission (options: `.a11y-audit/` for everything, or `.a11y-audit/*` plus `!.a11y-audit/REPORT.md` and `!.a11y-audit/coverage.md` to keep the report trackable). Mention cost in the first line, not as a paragraph. Only mention legal context (EN 301 549 / EAA / public sector) if the user or the repo brings it up. Question 3 says what the preflight found: the installed browser as in the example, or that Playwright downloads one of about 150 MB. Wait for the answer, then set the workspace up in one command, with `--ignore` only if the user agreed to it (`all`, or `report` to keep the report trackable):
 
 ```
 python3 "SKILL_DIR"/scripts/preflight.py <repo-root> --start [--ignore all|report]
 ```
 
-It creates `.a11y-audit/`, writes `stack-detect.md`, adds the ignore lines once, and in a re-audit moves the whole earlier audit into `.a11y-audit/previous/` so that none of its files is mistaken for this run's output. Nothing is deleted: an older `previous/` is kept as `previous-<timestamp>/`, and a translated labels file stays where it is.
+It creates `.a11y-audit/`, writes `stack-detect.md` and appends the ignore lines once, leaving the rest of `.gitignore` byte for byte as it was. A finished earlier audit (a workspace with a `REPORT.md`) is moved as a whole into `.a11y-audit/previous/`, so that none of its files is mistaken for this run's output. Nothing is deleted: an older `previous/` is kept as `previous-<timestamp>/`, and a translated labels file stays where it is. A workspace without a `REPORT.md` counts as a run in progress and is left alone, so running the command again after losing your place is harmless; add `--fresh` only when the user wants to begin again. Read what it prints: it refuses a workspace that is a file or a symbolic link, it does not write through a symlinked `.gitignore`, and it does not add ignore lines that cannot work (for example "keep the report trackable" while another line ignores the whole folder). In each of those cases it says what the user has to decide.
 
 ## Phase 2 — Recon and runtime
 
@@ -264,7 +264,7 @@ Exports, on request or when the context calls for them (a team that works from t
 - `references/report-template.md` — the exact report structure.
 - `scripts/detect_stack.py` — stack and tooling detector (also finds UIs embedded in source-code string literals).
 - `scripts/scan_patterns.py` — pattern inventory: every a11y grep over templates, styles and UI scripts, with locations.
-- `scripts/preflight.py` — Phase 0 in one read-only command (git and ignore status, earlier audit, audit size, tools, detector output); with `--start` the workspace set-up, re-audit rotation and ignore lines.
+- `scripts/preflight.py` — Phase 0 in one read-only command (git and ignore status, earlier audit or unfinished run, audit size, tools, detector output); with `--start` the workspace set-up, re-audit rotation and ignore lines.
 - `scripts/extract_colors.py` — colour tokens per scheme and failing foreground/background pairs.
 - `scripts/aria_digest.py` — per-view digest of the accessibility trees: landmarks, headings, nameless controls, duplicate names.
 - `scripts/build_briefs.py` — one briefing file per subagent, each expert's with the start of its findings file, and the list of agents for the phase check.
