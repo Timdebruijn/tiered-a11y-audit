@@ -109,6 +109,14 @@ python3 "SKILL_DIR"/scripts/render_report_parts.py <repo>/.a11y-audit --lang nl
 
 Writes `REPORT.draft.md`, the whole report in the template's shape: every table (within four columns, in words), every finding block with its fields in the fixed order and its values taken from `_merged.json`, the token changes, the structural advice, the to-verify list and the appendices. Places that need judgement or a voice are marked `<!-- WRITE: … -->`; the orchestrator copies the draft to `REPORT.md`, fills those and translates the finding text. Also writes `report-ids.json`, and `report-parts.md` with the tables alone. Exits 1, naming the findings, when a finding has no valid tier and would therefore be in no table. `python3 scripts/test_render.py` checks the draft against the template's rules. `--lang` takes any language code: `en` and `nl` ship in `references/report-labels/`, and for another language the first run writes `report-labels.<code>.json` into the workspace to be translated once (keys and `{placeholders}` stay; the script validates the file against the English source). The conformance table of `export_findings.py --format acr` uses the same labels.
 
+## Checking the finished report (Phase 6)
+
+```bash
+python3 "SKILL_DIR"/scripts/lint_report.py <repo>/.a11y-audit/REPORT.md --workspace <repo>/.a11y-audit
+```
+
+Prints one line per problem (`file:line: rule: what`) and exits 1 until the report is clean; exit 2 means it could not run. Rules: `unwritten` (a `WRITE` gap or the draft's header comment), `heading`, `table`, `list`, `symbol`, `bold`, and with `--workspace` also `ids` (every ID of `report-ids.json` present, one block per tier 1 and tier 2 finding, no unknown ID). Code blocks, code spans and link targets are skipped, so a path or a selector in backticks is never a problem; a slash in running text is, unless the word is clearly a path. It does not judge abbreviations, all-caps words or whether the prose is true. It works on any Markdown file in any language. Run it on `REPORT-SHORT.md` without `--workspace`, because that file leaves findings out on purpose. `python3 scripts/test_lint.py` holds it against the real draft and against the repository's README.
+
 ## Merging findings
 
 ```bash

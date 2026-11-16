@@ -249,7 +249,8 @@ def main():
          "     1. write every part marked WRITE and delete the marker;",
          "     2. translate the finding text (titles, problem, fix, verify) into the report language, keeping IDs, code,",
          "        selectors, file paths and numbers exactly as they are;",
-         "     3. do not retype or reorder tables and finding blocks: edit them in place, and keep every report ID.",
+         "     3. do not retype or reorder tables and finding blocks: edit them in place, and keep every report ID;",
+         "     4. delete this comment and run lint_report.py on the report until it exits 0.",
          f"     Facts: generated {date.today().isoformat()}; {len(findings)} findings; "
          f"{len(data.get('problems') or [])} problems still listed in findings/_merged.md. -->", "",
          f"# {t['report']}: {project}", "",
