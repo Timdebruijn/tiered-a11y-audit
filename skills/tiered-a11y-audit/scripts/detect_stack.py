@@ -241,7 +241,7 @@ def classify_path(rel: str, build: set, vendor: set) -> str:
     parts = rel.split("/")
     for i in range(1, len(parts)):
         prefix = "/".join(parts[:i])
-        if prefix in build or (i == 1 and parts[0] in BUILD_DIRS):
+        if prefix in build:
             return "build"
         # Top level only: the project's own themes/ is not vendored code.
         if prefix in vendor or (i == 1 and parts[0] in VENDOR_DIRS):
@@ -281,7 +281,9 @@ def read_text(p: Path, limit: int = 400_000) -> str:
 
 
 def analyse(root: Path, max_files: int) -> dict:
-    build = gitignored_dirs(root) | {d for d in BUILD_DIRS if (root / d).is_dir()}
+    # public/ and site/ are build output only next to a static-site generator; without one they are hand-written UI
+    generated = BUILD_DIRS if ssg_generates_public(root) else BUILD_DIRS - GENERATED_ONLY_BY_SSG
+    build = gitignored_dirs(root) | {d for d in generated if (root / d).is_dir()}
     vendor = submodule_paths(root) | {d for d in VENDOR_DIRS if (root / d).is_dir()}
     result: dict = {
         "root": str(root), "packages": [], "detected": defaultdict(dict), "vendored": defaultdict(dict),

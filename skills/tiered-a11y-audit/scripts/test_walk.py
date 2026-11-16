@@ -80,6 +80,28 @@ def test_dangling_symlink_survives():
         assert "#9a9a9a" in run("extract_colors.py", root)
 
 
+def test_a_hand_written_site_or_public_folder_is_the_ui_for_all_three_scanners():
+    # The fixture of the other tests has UI outside public/ as well, so a detector that dropped public/ still
+    # counted something. Here the folder is all there is.
+    for folder in ("site", "public"):
+        for ssg, ui in ((False, True), (True, False)):
+            with tempfile.TemporaryDirectory() as d:
+                root = Path(d)
+                (root / folder).mkdir()
+                (root / folder / "index.html").write_text('<html><head><title>t</title></head><body><img src="a.png"></body></html>')
+                (root / folder / "app.css").write_text(":root{--muted:#9a9a9a}\n")
+                if ssg:
+                    (root / "hugo.toml").write_text('baseURL = "https://example.org"\n')
+                detect, patterns = run("detect_stack.py", root), run("scan_patterns.py", root)
+                # the colour extractor exits 1 when it finds no tokens at all, which is the expected outcome next to a generator
+                colours = subprocess.run([sys.executable, str(HERE / "extract_colors.py"), str(root)], capture_output=True, text=True).stdout
+                what = f"{folder}/ {'next to' if ssg else 'without'} a generator config"
+                assert ("Project-owned UI files: 0" not in detect) == ui, f"detector, {what}: {detect.split('## Scope')[1][:160]}"
+                assert (f"Build output excluded: {folder}" in detect) != ui, f"detector, {what}"
+                assert ("| Image without alt attribute | 1 |" in patterns) == ui, f"pattern scanner, {what}"
+                assert ("#9a9a9a" in colours) == ui, f"colour extractor, {what}"
+
+
 def test_forms_and_controls_are_counted_for_the_audit_size():
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)

@@ -176,7 +176,7 @@ def main():
     a = ap.parse_args()
     root = Path(a.root).resolve()
     tokens = defaultdict(dict)
-    build = {"public", "_site", "out", "dist", "build", "resources/_gen"}
+    build = {"public", "site", "_site", "out", "dist", "build", "resources/_gen"}      # the same set as the other two scanners
     if not ssg_generates_public(root):
         build -= GENERATED_ONLY_BY_SSG
     gi = root / ".gitignore"
