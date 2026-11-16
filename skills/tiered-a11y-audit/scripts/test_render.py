@@ -214,6 +214,52 @@ def test_the_prose_file_is_only_ever_added_to():
     assert (ws / "report-prose.md").read_text(encoding="utf-8") == before, "a run with nothing new changed the prose file"
 
 
+def test_a_prose_file_that_would_put_the_wrong_text_in_the_report_is_refused():
+    run(FINDINGS, "en")
+    ws = LAST_WS
+    write_prose(ws, {"in-short": "The first version."})
+    run(None, "en", ws)
+    first = (ws / "REPORT.md").read_text(encoding="utf-8")
+    assert "The first version." in first
+    for label, texts, word in (("a line of prose that looks like a marker", {"in-short": "Start.\n=== note ===\nThe rest, which would vanish."}, "note"),
+                               ("a key with a typo", {"in-short": "Fine.", "sumary": "Lost."}, "sumary")):
+        write_prose(ws, texts)
+        r, _, _ = run(None, "en", ws)
+        assert r.returncode != 0 and word in r.stderr and "REPORT.md was not written" in r.stderr, f"{label}: {r.returncode} {r.stderr}"
+        assert (ws / "REPORT.md").read_text(encoding="utf-8") == first, f"{label}: a report was written anyway"
+    (ws / "report-prose.md").write_text("=== summary ===\nThe real one.\n\n=== summary ===\n\n", encoding="utf-8")
+    r, _, _ = run(None, "en", ws)
+    assert r.returncode != 0 and "summary more than once" in r.stderr, r.stderr
+
+
+def test_a_report_is_left_alone_until_some_prose_is_written():
+    run(FINDINGS, "en")
+    ws = LAST_WS
+    (ws / "REPORT.md").write_text("A report someone made by hand, before this file existed.\n", encoding="utf-8")
+    r, _, _ = run(None, "en", ws)                      # the prose file exists now, with every section still empty
+    assert (ws / "REPORT.md").read_text(encoding="utf-8").startswith("A report someone made by hand"), "an existing report was replaced by a draft full of gaps"
+    assert "has no text yet" in r.stdout and r.returncode == 0, r.stdout
+
+
+def test_new_sections_land_on_their_own_line_and_odd_persona_names_get_a_usable_key():
+    spaced = PERSONA.replace("Screen reader", "Low vision")
+    run(FINDINGS, "en", personas={"low vision user": spaced})
+    ws = LAST_WS
+    assert "=== persona-low-vision-user ===" in (ws / "report-prose.md").read_text(encoding="utf-8"), "a space in a file name made a key no marker line can hold"
+    (ws / "report-prose.md").write_text("=== in-short ===\nNo newline after this", encoding="utf-8")
+    for _ in range(3):
+        run(None, "en", ws)
+    text = (ws / "report-prose.md").read_text(encoding="utf-8")
+    assert "No newline after this\n=== summary ===" in text, "a new section was glued to the last line of the text before it"
+    assert text.count("=== summary ===") == 1 and text.count("=== persona-low-vision-user ===") == 1, "sections were added again on a later run"
+    assert "No newline after this\n" in (ws / "REPORT.md").read_text(encoding="utf-8") and "===" not in (ws / "REPORT.md").read_text(encoding="utf-8")
+
+
+def test_a_tier_without_findings_still_asks_for_the_standing_advice():
+    _, draft, _ = run([FINDINGS[0]])
+    assert "[tier3] no finding landed in this tier" in draft and "sort the items into five H3 blocks" not in draft
+
+
 def test_the_draft_no_longer_asks_for_a_translation():
     _, draft, _ = run(FINDINGS, "nl")
     assert "translate the finding text" not in draft and "the agents wrote it in the report language" in draft

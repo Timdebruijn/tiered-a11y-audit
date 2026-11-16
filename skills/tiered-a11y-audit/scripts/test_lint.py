@@ -39,7 +39,7 @@ def test_the_draft_itself_is_not_finished():
     problems = lint(DRAFT, IDS)
     assert {r for _, r, _ in problems} == {"unwritten"}
     assert len(problems) == DRAFT.count("<!--"), "every gap and the draft header are listed, each once"
-    assert problems[0][0] == 1 and "delete it" in problems[0][2], "the draft header is reported on its own line"
+    assert problems[0][0] == 1 and "a comment is left in the report" in problems[0][2], "the draft header is reported on its own line"
 
 
 def test_each_broken_rule_is_named():

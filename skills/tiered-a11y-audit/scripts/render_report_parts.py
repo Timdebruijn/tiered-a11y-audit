@@ -110,11 +110,13 @@ class Gap:
 
 
 def read_prose(path: Path):
-    """{key: text} with comments dropped, or None when there is no prose file yet."""
+    """({key: text} with comments dropped, [keys that occur more than once]), or (None, []) when there is no prose file yet."""
     if not path.is_file():
-        return None
-    parts = re.split(r"(?m)^=== ([\w.:-]+) ===[ \t]*$", path.read_text(encoding="utf-8", errors="replace"))
-    return {key: re.sub(r"<!--.*?-->", "", body, flags=re.S).strip() for key, body in zip(parts[1::2], parts[2::2])}
+        return None, []
+    parts = re.split(r"(?m)^=== ([\w.-]+) ===[ \t]*$", path.read_text(encoding="utf-8", errors="replace"))
+    keys = parts[1::2]
+    prose = {key: re.sub(r"<!--.*?-->", "", body, flags=re.S).strip() for key, body in zip(keys, parts[2::2])}
+    return prose, sorted({k for k in keys if keys.count(k) > 1})
 
 
 def add_prose_sections(path: Path, gaps: list, known) -> int:
@@ -129,8 +131,9 @@ def add_prose_sections(path: Path, gaps: list, known) -> int:
         if g.material:
             out += ["<!-- to choose from or to sort:"] + [quiet(line) for line in g.material] + ["-->"]
         out += ["", ""]
+    glue = "\n" if path.exists() and not path.read_text(encoding="utf-8", errors="replace").endswith("\n") else ""
     with path.open("a", encoding="utf-8") as f:
-        f.write("\n".join(out))
+        f.write(glue + "\n".join(out))
     return len(new)
 
 
@@ -389,7 +392,8 @@ def main():
         d += ownership[tier]
 
     fs = by_tier[3]
-    d += [f"## {t['t3']}", "", t["tier_p"]["3"].format(n=len(fs)), "",
+    d += [f"## {t['t3']}", "", t["tier_p"]["3"].format(n=len(fs)), ""]
+    d += [Gap("tier3", "no finding landed in this tier: write the standing tier-3 advice (testing with disabled users, a CI gate) as one short list")] if not fs else [
           Gap("tier3", "sort the items into five H3 blocks in this fixed order: Design, Content, Features, Validation with users, "
                        "Process and governance. One list per block, one line per item, starting with its report ID: what, why (which users or "
                        "criteria), rough effort. Add the standing tier-3 advice (testing with disabled users, CI gate) where no finding covers it. "
@@ -401,7 +405,7 @@ def main():
     if rows:
         d += [t["ann_personas"].format(n=len(rows)), ""] + persona_table + [""]
     for stem, name, raw in notes:
-        d += [f"### {name}", "", Gap(f"persona-{stem}", "three or four sentences from the narrative, the top frustration with its report ID, and what would "
+        d += [f"### {name}", "", Gap("persona-" + re.sub(r"[^\w.-]+", "-", stem), "three or four sentences from the narrative, the top frustration with its report ID, and what would "
                                                           "make it a 10; say so where this persona and an expert disagree. Source: " + raw)]
 
     lev = data.get("leverage_entries") or []
@@ -443,9 +447,12 @@ def main():
     (ws / "REPORT.draft.md").write_text(draft, encoding="utf-8")
     gaps = [x for x in d if isinstance(x, Gap)]
     prose_path = ws / PROSE
-    prose = read_prose(prose_path)
+    prose, twice = read_prose(prose_path)
     added = add_prose_sections(prose_path, gaps, prose or {})
-    if prose is not None:
+    known = {g.key for g in gaps}
+    stray = sorted(k for k in (prose or {}) if k not in known)
+    written = prose is not None and any(prose.get(g.key) for g in gaps)
+    if written and not twice and not stray:
         (ws / "REPORT.md").write_text("\n".join(flat(d, prose)) + "\n", encoding="utf-8")
 
     if dropped:
@@ -453,13 +460,22 @@ def main():
               "fix visual_impact in their findings file and merge again", file=sys.stderr)
     print(f"REPORT.draft.md: {len(findings)} finding blocks ({', '.join(f'T{k}: {v}' for k, v in sorted(counters.items()))}), "
           f"{len(rows)} persona rows, coverage {'included' if cov.exists() else 'missing'}; report-parts.md and report-ids.json written")
-    if prose is None:
+    if twice or stray:
+        # Either would put the wrong text in the report without anyone noticing, so no report is written until it is settled.
+        if twice:
+            print(f"!! {PROSE} has the section {', '.join(twice)} more than once: keep one. REPORT.md was not written.", file=sys.stderr)
+        if stray:
+            print(f"!! {PROSE} has a section {', '.join(stray)} that is no gap of this report: a typo in a key, a section for something that "
+                  f"is gone (delete it), or a line of your own text that looks like a marker (reword it). REPORT.md was not written.", file=sys.stderr)
+    elif prose is None:
         print(f"{PROSE} created with {added} sections: write your text there (read report-parts.md for the numbers), then run this again to get REPORT.md")
+    elif not written:
+        print(f"{PROSE} has no text yet" + (f" ({added} new sections were added)" if added else "") + ": write it there, then run this again. REPORT.md was left as it is.")
     else:
         open_ = [g.key for g in gaps if not g.optional and not prose.get(g.key)]
         print(f"REPORT.md written from {PROSE}" + (f"; {added} new sections were added to it" if added else "")
               + (f"; still to write: {', '.join(open_)}" if open_ else "; every gap has its text"))
-    return 1 if dropped else 0
+    return 1 if dropped or twice or stray else 0
 
 
 if __name__ == "__main__":

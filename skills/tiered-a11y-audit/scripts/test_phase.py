@@ -192,9 +192,24 @@ def test_phase_6_wants_a_current_draft_and_a_report_that_passes_the_linter():
     one(ws, "6", "REPORT.md has")
     (ws / "REPORT.md").write_text(re.sub(r"<!-- WRITE:.*?-->", "Written.", draft.split("-->", 1)[1].lstrip(), flags=re.S), encoding="utf-8")
     assert gaps(ws, "6") == [], gaps(ws, "6")
-    touch_after(ws / "report-prose.md", ws / "REPORT.md")                      # prose changed after the report was assembled
+    report, prose_file, drafted = ws / "REPORT.md", ws / "report-prose.md", ws / "REPORT.draft.md"
+    stamps = {f: f.stat().st_mtime for f in (report, prose_file, drafted)}
+
+    def restore():
+        for f, t in stamps.items():
+            os.utime(f, (t, t))
+    touch_after(prose_file, report)                                            # prose changed after the report was assembled
     one(ws, "6", "REPORT.md is older than report-prose.md or the draft")
-    touch_after(ws / "REPORT.md", ws / "report-prose.md")
+    restore()
+    touch_after(drafted, report)                                               # rendered again, report not assembled since
+    one(ws, "6", "REPORT.md is older than report-prose.md or the draft")
+    restore()
+    kept = prose_file.read_text(encoding="utf-8")
+    prose_file.unlink()                                                        # an audit from before the prose file existed
+    assert gaps(ws, "6") == [], gaps(ws, "6")
+    prose_file.write_text(kept, encoding="utf-8")
+    restore()
+    assert gaps(ws, "6") == [], gaps(ws, "6")
     own = ws / "findings" / "orchestrator.json"                               # found while verifying, not merged yet
     own.write_text(json.dumps({"agent": "orchestrator", "findings": []}), encoding="utf-8")
     one(ws, "6", "older than orchestrator.json")
