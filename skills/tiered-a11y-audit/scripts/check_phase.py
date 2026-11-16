@@ -12,7 +12,8 @@ Run it at the end of the phase with that number:
      criterion it owns (not-tested and n/a with a reason), and the merge is newer than every findings file
   5  the personas for this mode and the framework-maximizer reported, and the merge was run after them
   6  the merge is still newer than its inputs, the draft was rendered after it, a re-audit whose earlier
-     audit has a merge was merged with --previous, and REPORT.md passes lint_report.py
+     audit has a merge was merged with --previous, and REPORT.md was assembled after the last change to the
+     prose file and passes lint_report.py
 
 It cannot tell this run's files from files an earlier run left in the workspace: moving an earlier audit
 aside before the run starts is what keeps the answers honest.
@@ -166,8 +167,11 @@ def phase6(ws: Path, gaps: list) -> None:
             gaps.append("this is a re-audit (previous/ holds a merge) but the last merge ran without --previous: "
                         "merge again with it, so the delta is written")
     ids = load(ws / "report-ids.json", gaps)
+    prose_file = ws / "report-prose.md"
     if not report.is_file():
-        gaps.append("REPORT.md is missing")
+        gaps.append("REPORT.md is missing: write your text in report-prose.md and run render_report_parts.py again")
+    elif (prose_file.is_file() and older(report, prose_file)) or (draft.is_file() and older(report, draft)):
+        gaps.append("REPORT.md is older than report-prose.md or the draft: run render_report_parts.py again, it assembles the report from both")
     elif ids is not None:
         n = len(lint(report.read_text(encoding="utf-8", errors="replace"), ids))
         if n:

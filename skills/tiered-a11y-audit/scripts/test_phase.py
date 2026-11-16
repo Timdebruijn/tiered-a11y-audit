@@ -192,6 +192,9 @@ def test_phase_6_wants_a_current_draft_and_a_report_that_passes_the_linter():
     one(ws, "6", "REPORT.md has")
     (ws / "REPORT.md").write_text(re.sub(r"<!-- WRITE:.*?-->", "Written.", draft.split("-->", 1)[1].lstrip(), flags=re.S), encoding="utf-8")
     assert gaps(ws, "6") == [], gaps(ws, "6")
+    touch_after(ws / "report-prose.md", ws / "REPORT.md")                      # prose changed after the report was assembled
+    one(ws, "6", "REPORT.md is older than report-prose.md or the draft")
+    touch_after(ws / "REPORT.md", ws / "report-prose.md")
     own = ws / "findings" / "orchestrator.json"                               # found while verifying, not merged yet
     own.write_text(json.dumps({"agent": "orchestrator", "findings": []}), encoding="utf-8")
     one(ws, "6", "older than orchestrator.json")

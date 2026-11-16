@@ -43,13 +43,17 @@ FINDINGS = [
 ]
 
 
+LAST_WS = None        # the workspace of the latest run() that built one
+
+
 def run(findings, lang="en", ws=None, extra=None, personas=None):
     if ws is not None:
         r = subprocess.run([sys.executable, str(HERE / "render_report_parts.py"), str(ws), "--lang", lang], capture_output=True, text=True)
         draft = (ws / "REPORT.draft.md").read_text(encoding="utf-8") if (ws / "REPORT.draft.md").exists() else ""
         return r, draft, ws
+    global LAST_WS
     d = tempfile.mkdtemp()
-    ws = Path(d) / ".a11y-audit"
+    ws = LAST_WS = Path(d) / ".a11y-audit"
     (ws / "findings").mkdir(parents=True)
     (Path(d) / "src").mkdir()
     (Path(d) / "src" / "page.html").write_text("<main>\n<div onclick>\n</div>\n", encoding="utf-8")
@@ -147,6 +151,67 @@ def test_the_flow_table_of_a_persona_is_read_by_position_not_by_english_words():
     assert "| Taak | screen-reader |" not in draft, "the translated header row became a result row"
     assert "| Flow bestellen | screen-reader | mislukt | Knop zonder naam |" in draft, "a flow whose name starts with Flow was dropped"
     assert "| Contact | screen-reader | voltooid | geen |" in draft
+
+
+PERSONA = ("# Screen reader user\n\n## Flow results\n| Flow | Result | Feel | Main obstacle |\n|---|---|---|---|\n"
+           "| Contact | failed | slow | KBD-001 |\n\n## In my own words\nI could not send the form.\n\n## Top 3 frustrations\n1. The button.\n")
+
+
+def write_prose(ws, texts):
+    (ws / "report-prose.md").write_text("<!-- a hint that must not reach the report -->\n\n"
+                                        + "".join(f"=== {k} ===\n<!-- hint -->\n{v}\n\n" for k, v in texts.items()), encoding="utf-8")
+
+
+def test_the_report_is_assembled_from_the_prose_file_and_never_edited_by_hand():
+    r, draft, ids = run(FINDINGS, "en", personas={"screen-reader-user": PERSONA})
+    ws = LAST_WS
+    prose_file = ws / "report-prose.md"
+    keys = re.findall(r"(?m)^=== (.+) ===$", prose_file.read_text(encoding="utf-8"))
+    assert keys == ["in-short", "summary", "top5-closing", "works-well", "tier3", "persona-screen-reader-user", "advice-tooling", "method", "legal"], keys
+    assert all(f"[{k}]" in draft for k in keys), "a gap in the draft does not name its key"
+    assert not (ws / "REPORT.md").exists() and "report-prose.md created" in r.stdout, "a report was written before anyone wrote its prose"
+
+    t3 = next(rid for rid, m in ids.items() if m["tier"] == 3)
+    texts = {k: f"Text for {k}." for k in keys if k != "legal"}
+    texts["works-well"] = "- The one positive that was chosen."
+    texts["tier3"] = f"### Design\n\n- {t3}: redo it, for everyone, a week."
+    write_prose(ws, texts)
+    r, _, _ = run(None, "en", ws)
+    report = (ws / "REPORT.md").read_text(encoding="utf-8")
+    assert "every gap has its text" in r.stdout, r.stdout
+    assert "<!--" not in report, "a comment or an unfilled gap reached the report"
+    for k, v in texts.items():
+        assert v in report, f"the text for {k} is not in the report"
+    assert "- One main landmark." not in report and "Title of CNT-001 (serious; small)" not in report, "the list to choose from was kept next to the choice"
+    assert "Legal context" not in report, "an optional block without text kept its heading"
+    for rid, meta in ids.items():
+        if meta["tier"] != 3:
+            assert block_of(report, rid) == block_of(draft, rid), f"{rid}: the finding block changed between draft and report"
+    assert lint(report, ids) == [], lint(report, ids)
+
+    texts["summary"], texts["legal"] = "", "The public sector rules apply."
+    write_prose(ws, texts)
+    r, _, _ = run(None, "en", ws)
+    report = (ws / "REPORT.md").read_text(encoding="utf-8")
+    assert "still to write: summary" in r.stdout and "<!-- WRITE: [summary]" in report, "an empty section did not stay a gap"
+    unwritten = [m for _, rule, m in lint(report, ids) if rule == "unwritten"]
+    assert len(unwritten) == 1 and unwritten[0].startswith("still to write: [summary]"), unwritten
+    assert "### D. Legal context\n\nThe public sector rules apply." in report
+
+
+def test_the_prose_file_is_only_ever_added_to():
+    run(FINDINGS, "en", personas={"screen-reader-user": PERSONA})
+    ws = LAST_WS
+    write_prose(ws, {"in-short": "My own words, which took an hour."})
+    (ws / "personas" / "low-vision-user.md").write_text(PERSONA.replace("Screen reader", "Low vision"), encoding="utf-8")
+    r, _, _ = run(None, "en", ws)
+    text = (ws / "report-prose.md").read_text(encoding="utf-8")
+    assert text.startswith("<!-- a hint that must not reach the report -->") and "My own words, which took an hour." in text, "written prose was overwritten"
+    assert text.count("=== in-short ===") == 1 and "=== persona-low-vision-user ===" in text and "=== summary ===" in text, "missing sections were not added"
+    assert "new sections were added" in r.stdout
+    before = text
+    run(None, "en", ws)
+    assert (ws / "report-prose.md").read_text(encoding="utf-8") == before, "a run with nothing new changed the prose file"
 
 
 def test_the_draft_no_longer_asks_for_a_translation():
