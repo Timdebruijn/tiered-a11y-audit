@@ -110,6 +110,11 @@ def test_structure_meets_the_read_aloud_rules():
         assert rules == {"unwritten"}, f"{lang}: the draft breaks the read-aloud rules by itself: {rules}"
 
 
+def test_a_tier_without_findings_says_none_instead_of_a_symbol():
+    _, draft, _ = run([FINDINGS[0]])
+    assert "| 2 | 0 | none | none |" in draft and "| 3 | 0 | none | none |" in draft, "an empty tier leaves a symbol-only cell"
+
+
 def test_dutch_uses_one_word_per_severity():
     _, draft, ids = run(FINDINGS, "nl")
     assert "| blokkerend |" in draft and "Ernst blokkerend," in draft, "table and block disagree on the severity word"

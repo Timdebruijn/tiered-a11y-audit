@@ -46,7 +46,7 @@ def loc(f):
 
 def effort_total(fs, t):
     c = Counter(f.get("effort") for f in fs)
-    return ", ".join(f"{c[k]} {t['effort_unit'][k]}" for k in ("S", "M", "L") if c[k]) or "?"
+    return ", ".join(f"{c[k]} {t['effort_unit'][k]}" for k in ("S", "M", "L") if c[k]) or ("?" if fs else t["none"])
 
 
 def classify_result(text, t):

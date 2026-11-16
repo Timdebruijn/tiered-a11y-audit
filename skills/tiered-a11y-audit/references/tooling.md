@@ -126,6 +126,14 @@ python3 "SKILL_DIR"/scripts/lint_report.py <repo>/.a11y-audit/REPORT.md --worksp
 
 Prints one line per problem (`file:line: rule: what`) and exits 1 until the report is clean; exit 2 means it could not run. Rules: `unwritten` (a `WRITE` gap or the draft's header comment), `heading`, `table`, `list`, `symbol`, `bold`, and with `--workspace` also `ids` (every ID of `report-ids.json` present, one block per tier 1 and tier 2 finding, no unknown ID). Code blocks, code spans and link targets are skipped, so a path or a selector in backticks is never a problem; a slash in running text is, unless the word is clearly a path. It does not judge abbreviations, all-caps words or whether the prose is true. It works on any Markdown file in any language. Run it on `REPORT-SHORT.md` without `--workspace`, because that file leaves findings out on purpose. `python3 scripts/test_lint.py` holds it against the real draft and against the repository's README.
 
+## Phase checks
+
+```bash
+python3 "SKILL_DIR"/scripts/check_phase.py <repo>/.a11y-audit 4
+```
+
+Prints one line per gap and exits 1 until phase 3, 4, 5 or 6 is complete; exit 2 means it could not run. Phase 3: the detector output, stack profile, pattern inventory and colour pairs exist, the profile holds no value left at the template's ellipsis, the briefs listed in `briefs/_agents.json` exist and that list (the last file the builder writes) is newer than the profile, a runtime scan left `summary.json`, and `aria-digest.md` is non-empty when the scan captured accessibility trees (an empty digest without trees must be deleted; a scan that died can be run again or its `automated/` folder deleted to go on static-only). Phase 4: every expert in `briefs/_agents.json` wrote readable JSON with a `findings` list and a valid status for each criterion its lenses own, `not-tested` and `n/a` with a reason in `note`, and `_merged.json` is newer than every findings file and `_dedupe.json`. Phase 5: the four core personas reported (mini mode: the screen reader persona plus one other), the framework-maximizer wrote its file, the merge ran after them, and `coverage.md` exists. Phase 6: `_merged.json` is still newer than every findings file, persona report and `_dedupe.json`, `REPORT.draft.md` is newer than `_merged.json`, a re-audit whose earlier audit reached a merge was merged with `--previous`, and `REPORT.md` passes `lint_report.py` with the report IDs. Freshness is judged by file times, and the check cannot tell this run's files from files an earlier run left in the workspace. The merge's "Problems to resolve" are not counted: that list mixes what the merge corrected itself with what needs a decision. `python3 scripts/test_phase.py` walks a mini audit through all four.
+
 ## Merging findings
 
 ```bash
