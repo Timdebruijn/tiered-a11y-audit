@@ -33,6 +33,8 @@ The value of this skill comes from two things a generic audit misses, so protect
 
 Agents cost tokens and time; scripts cost neither. Everything that is a grep, a parse, a count, a colour calculation or a table is a script in `scripts/`, run once by the orchestrator, and agents start from its output: `detect_stack.py` (stack and tooling), `scan_patterns.py` (every a11y grep), `extract_colors.py` (tokens and failing contrast pairs), `aria_digest.py` (names, headings, landmarks per view), `build_briefs.py` (one briefing file per agent), `merge_findings.py` (merge, tiers, clusters, coverage, persona links, re-audit delta), `render_report_parts.py` (the whole draft report: tables, finding blocks, appendices). If you catch yourself or a subagent doing any of that by hand, stop and use the script.
 
+One step, one shell call. Every separate tool call sends the whole conversation again, so chain the commands that belong together with `&&`: the workspace set-up and the two scans, the brief builder and its phase check, a merge and its phase check, the renderer and the linter. Do the same when you look things up: one command that prints the three files you need, not three reads.
+
 ## Your own output must be accessible
 
 The person running this skill may use a screen reader or text-to-speech, magnification, or have limited energy for reading. Everything you say to them (questions, progress, the final reply, the report) follows these rules, always, not only when someone says they use assistive tech:
