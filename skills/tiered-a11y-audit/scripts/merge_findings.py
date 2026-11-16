@@ -12,7 +12,9 @@ Writes findings/_merged.json   all findings, duplicates merged (exact fingerprin
        delta.md                with --previous: resolved / still open / regressed / new, matched on fingerprint
 Checks what a finding claims against what a script can look up: the cited file, lines and snippet
 exist in the repository; the criterion is a WCAG 2.2 A or AA one, with its name and level taken from the
-ownership table; stated contrast ratios are recomputed. Whatever does not hold goes into the problems list.
+ownership table; stated contrast ratios are recomputed. What does not hold and needs a decision goes into
+"problems"; what the merge could settle itself (a level corrected, a shape converted, a default assumed)
+goes into "notes", so that the length of the problem list means something.
 Prints a short summary. Pure standard library; reads the repo, never writes to it.
 """
 from __future__ import annotations
@@ -115,7 +117,19 @@ def tiers_of(f: dict):
             TIER_WORD.get(pt) if isinstance(pt, (str, int)) else None)
 
 
-def coerce_shape(f, agent: str, seq: int, problems: list):
+class Log(list):
+    """What the merge reports back. append() is for what needs a decision from the orchestrator: content was
+    lost, or a claim does not hold. note() is for what the merge settled itself and only wants to be seen."""
+
+    def __init__(self):
+        super().__init__()
+        self.notes = []
+
+    def note(self, msg: str) -> None:
+        self.notes.append(msg)
+
+
+def coerce_shape(f, agent: str, seq: int, problems: Log):
     """Make one finding safe for every later stage, or return None to drop it.
 
     Everything here is a deviation an agent has actually produced: fix as a string,
@@ -130,16 +144,16 @@ def coerce_shape(f, agent: str, seq: int, problems: list):
     f = dict(f)
     if not isinstance(f.get("id"), str) or not f["id"].strip():
         f["id"] = f"{agent.upper()[:3] or 'UNK'}-x{seq:02d}"
-        problems.append(f"{agent}: finding {seq} has no usable id; filed as {f['id']}")
+        problems.note(f"{agent}: finding {seq} has no usable id; filed as {f['id']}")
     f["id"] = f["id"].strip()
     if "fingerprint" in f and not isinstance(f["fingerprint"], str):
-        problems.append(f"{f['id']}: fingerprint is {type(f['fingerprint']).__name__}; converted to text")
+        problems.note(f"{f['id']}: fingerprint is {type(f['fingerprint']).__name__}; converted to text")
         f["fingerprint"] = str(f["fingerprint"])
     if not isinstance(f.get("title"), str):
         f["title"] = str(f.get("title") or "(no title)")
     if not isinstance(f.get("fix"), dict):
         if f.get("fix") is not None:
-            problems.append(f"{f['id']}: fix is {type(f['fix']).__name__}, not an object; kept as fix.summary")
+            problems.note(f"{f['id']}: fix is {type(f['fix']).__name__}, not an object; kept as fix.summary")
             f["fix"] = {"summary": str(f["fix"])}
         else:
             f["fix"] = {}
@@ -156,7 +170,7 @@ def coerce_shape(f, agent: str, seq: int, problems: list):
             fixed.append(sc)
         elif isinstance(sc, str) and re.match(r"\s*\d\.\d\.\d+", sc):
             fixed.append({"sc": sc.strip().split()[0]})
-            problems.append(f"{f['id']}: wcag entry {sc!r} is a bare string; read as a criterion number")
+            problems.note(f"{f['id']}: wcag entry {sc!r} is a bare string; read as a criterion number")
         elif sc is not None:
             problems.append(f"{f['id']}: wcag entry {sc!r} unusable; ignored")
     f["wcag"] = fixed
@@ -168,12 +182,12 @@ def coerce_shape(f, agent: str, seq: int, problems: list):
 
 
 def squash(s: str) -> str:
-    """Whitespace collapsed and backslashes dropped, so a snippet quoted from HTML inside a
-    C++ or JS string still matches the escaped source."""
-    return re.sub(r"\s+", " ", s.replace("\\", "")).strip()
+    """Whitespace and backslashes dropped, so a snippet quoted from HTML inside a C++ or JS string still
+    matches the escaped source, and one an agent reflowed onto a single line still matches the wrapped original."""
+    return re.sub(r"\s+", "", s.replace("\\", ""))
 
 
-def verify_claims(f: dict, owners: dict, repo: Path, problems: list) -> None:
+def verify_claims(f: dict, owners: dict, repo: Path, problems: Log) -> None:
     """Hold a finding against what can be looked up instead of trusted.
 
     A language model wrote these fields. It misremembers levels (2.4.9 as level A), cites
@@ -192,7 +206,7 @@ def verify_claims(f: dict, owners: dict, repo: Path, problems: list) -> None:
                             "cite the A or AA criterion if one applies, it is what the coverage matrix counts")
             continue
         if sc.get("level") not in (None, meta["level"]):
-            problems.append(f"{fid}: {num} given as level {sc['level']}, it is level {meta['level']}; corrected")
+            problems.note(f"{fid}: {num} given as level {sc['level']}, it is level {meta['level']}; corrected")
         sc["name"], sc["level"] = meta["name"], meta["level"]
     if not f["wcag"] and f.get("best_practice_only") is not True:
         problems.append(f"{fid}: no WCAG criterion and not marked best_practice_only; cite one or set the marker")
@@ -232,7 +246,7 @@ def verify_claims(f: dict, owners: dict, repo: Path, problems: list) -> None:
                 continue
             stated = col.get(ratio_key)
             if isinstance(stated, (int, float)) and abs(stated - real) > 0.05:
-                problems.append(f"{fid}: colours.{ratio_key} stated as {stated}, {col[fg_key]} on {col['bg']} "
+                problems.note(f"{fid}: colours.{ratio_key} stated as {stated}, {col[fg_key]} on {col['bg']} "
                                 f"measures {real}; corrected")
             col[ratio_key] = real
         need = col.get("required")
@@ -244,7 +258,7 @@ def verify_claims(f: dict, owners: dict, repo: Path, problems: list) -> None:
                 problems.append(f"{fid}: the suggested colour reaches {col['suggested_ratio']}, short of the required {need}")
 
 
-def normalise_persona_finding(raw: dict, persona: str, problems: list, seq: int = 0) -> dict:
+def normalise_persona_finding(raw: dict, persona: str, problems: Log, seq: int = 0) -> dict:
     """Personas drift from the schema; map the common deviations and flag them."""
     f = dict(raw)
     # seq, not len(problems): two id-less findings used to collide on one id, and the
@@ -261,12 +275,12 @@ def normalise_persona_finding(raw: dict, persona: str, problems: list, seq: int 
             m = re.match(r"([^\s:(]+\.[a-z0-9]+)(?::(\d+(?:-\d+)?))?", str(loc))
             ev = {"file": m.group(1), "lines": m.group(2)} if m else {"file": str(loc)}
         if f.get("evidence_text"):
-            ev["snippet"] = str(f.pop("evidence_text"))
+            ev["observation"] = str(f.pop("evidence_text"))    # a persona's words, not a quote the claim check can look up
         f["evidence"] = [ev] if ev else []
-        problems.append(f"{pid}: persona finding used 'location' instead of evidence[]; converted")
+        problems.note(f"{pid}: persona finding used 'location' instead of evidence[]; converted")
     if isinstance(f.get("wcag"), str):
         f["wcag"] = [{"sc": sc} for sc in re.findall(r"\d\.\d\.\d+", f["wcag"])]
-        problems.append(f"{pid}: wcag given as a string; converted")
+        problems.note(f"{pid}: wcag given as a string; converted")
     if isinstance(f.get("fix"), str):
         f["fix"] = {"summary": f["fix"]}
     if "visual_impact" not in f:
@@ -274,7 +288,7 @@ def normalise_persona_finding(raw: dict, persona: str, problems: list, seq: int 
         if t:
             f["visual_impact"] = {1: "none", 2: "subtle", 3: "significant"}[t]
             f["proposed_tier"] = t
-            problems.append(f"{pid}: no visual_impact; derived from tier {t} — verify")
+            problems.note(f"{pid}: no visual_impact; derived from tier {t} — verify")
         else:
             problems.append(f"{pid}: no visual_impact and no tier")
     f.setdefault("fingerprint", re.sub(r"[^a-z0-9]+", "-", f.get("title", "").lower())[:40] + "@" + norm_file(f))
@@ -303,7 +317,7 @@ def extract_json_blocks(text: str):
     return out
 
 
-def parse_personas(pdir: Path, problems: list):
+def parse_personas(pdir: Path, problems: Log):
     """Return (links, new_findings, flow_failures).
     links: {finding_id: {"confirmed": [persona], "cited": [...], "disputed": [...]}}
     flow_failures: [{persona, flow, result, ids}] for failed / only-with-help rows."""
@@ -373,7 +387,7 @@ def main():
     if not owners:
         print("no criteria parsed from --ownership; cannot build the coverage matrix", file=sys.stderr)
         return 2
-    problems = []
+    problems = Log()
     persona_links, persona_findings, flow_failures = parse_personas(ws / "personas", problems)
     dedupe = {}
     if (fdir / "_dedupe.json").exists():
@@ -387,7 +401,7 @@ def main():
             for canon, dups in raw_dedupe.items():
                 if isinstance(dups, str):          # one id instead of a list of ids
                     dups = [dups]
-                    problems.append(f"_dedupe.json[{canon!r}]: a single id, expected a list; read as one duplicate")
+                    problems.note(f"_dedupe.json[{canon!r}]: a single id, expected a list; read as one duplicate")
                 if not isinstance(dups, list):
                     problems.append(f"_dedupe.json[{canon!r}] is {type(dups).__name__}; ignored")
                     continue
@@ -412,13 +426,13 @@ def main():
             else:
                 f["tier"] = derived
                 if proposed not in (None, derived):
-                    problems.append(f"{f.get('id')}: proposed_tier {f.get('proposed_tier')} != tier {derived} from visual_impact {vi!r}; using {derived}")
+                    problems.note(f"{f.get('id')}: proposed_tier {f.get('proposed_tier')} != tier {derived} from visual_impact {vi!r}; using {derived}")
             own = f["fix"].get("ownership")
             if own not in ("project", "override", "upstream", "accepted"):
-                problems.append(f"{f['id']}: fix.ownership missing or invalid ({own!r}); assuming 'project'")
+                problems.note(f"{f['id']}: fix.ownership missing or invalid ({own!r}); assuming 'project'")
                 f["fix"]["ownership"] = "project"
             if not f.get("fingerprint"):
-                problems.append(f"{f['id']}: no fingerprint; generated from title+file")
+                problems.note(f"{f['id']}: no fingerprint; generated from title+file")
                 f["fingerprint"] = re.sub(r"[^a-z0-9]+", "-", f["title"].lower())[:40] + "@" + norm_file(f)
             all_findings.append(f)
     for seq, raw in enumerate(persona_findings, 1):
@@ -429,7 +443,7 @@ def main():
         derived, proposed = tiers_of(f)
         f["tier"] = derived or proposed
         if not f.get("fingerprint"):
-            problems.append(f"{f['id']}: no fingerprint; generated from title+file")
+            problems.note(f"{f['id']}: no fingerprint; generated from title+file")
             f["fingerprint"] = re.sub(r"[^a-z0-9]+", "-", f["title"].lower())[:40] + "@" + norm_file(f)
         all_findings.append(f)
 
@@ -570,7 +584,7 @@ def main():
             owner_file = next((ag for ag in rep if ag == meta["owner"] or meta["owner"] in (agents[ag].get("lenses") or [])), None)
             src = owner_file or next(iter(rep))
             status = statuses[src]
-            note = rep[src].get("note", "")
+            note = rep[src].get("note") or rep[src].get("reason") or ""     # agents write either key
             distinct = set(statuses.values())
             if len(distinct) > 1:
                 conflicts.append(f"{sc}: files disagree — " + ", ".join(f"{ag}: {st}" for ag, st in statuses.items()) + f"; using {src}")
@@ -593,7 +607,7 @@ def main():
     exceptions = [{"id": f["id"], "title": f.get("title"), **(f.get("fix", {}).get("exception") or {}),
                    "reason": (f.get("fix", {}).get("exception") or {}).get("reason") or f.get("fix", {}).get("summary")}
                   for f in merged if f.get("fix", {}).get("ownership") == "accepted"]
-    out = {"findings": merged, "leverage_entries": leverage_entries, "root_cause_clusters": cand, "problems": problems,
+    out = {"findings": merged, "leverage_entries": leverage_entries, "root_cause_clusters": cand, "problems": problems, "notes": problems.notes,
            "cross_lens_notes": cross_notes, "accepted_exceptions": exceptions,
            "key_flow_failures": flow_failures, "severity_upgrades": severity_upgrades,
            "positives": {ag: d.get("positives", []) for ag, d in agents.items()},
@@ -637,7 +651,9 @@ def main():
         lines += ["", "## Accepted exceptions (ownership: accepted)", ""]
         lines += [f"- {e['id']} · {e.get('tool', '')} {e.get('rule', '')} {e.get('selector', '')} · {e.get('reason', '')}".replace("  ", " ") for e in exceptions]
     if problems:
-        lines += ["", "## Problems to resolve (schema and unverified claims)", ""] + [f"- {p}" for p in problems]
+        lines += ["", f"## Problems to resolve ({len(problems)}: lost content and claims that do not hold)", ""] + [f"- {p}" for p in problems]
+    if problems.notes:
+        lines += ["", f"## Settled by the merge ({len(problems.notes)}: for your information, nothing to do)", ""] + [f"- {n}" for n in problems.notes]
     (fdir / "_merged.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     cov = ["# WCAG 2.2 A/AA coverage (55 criteria)", "",
@@ -685,7 +701,7 @@ def main():
             problems.append(f"--previous given but {prev_path} not found")
 
     print(f"{len(all_findings)} raw findings from {len(agents)} agents (+{len(persona_findings)} from personas) → {len(merged)} merged; "
-          f"{len(cand)} root-cause clusters; coverage {dict(counts)}; {len(conflicts)} conflicts; {len(problems)} problems")
+          f"{len(cand)} root-cause clusters; coverage {dict(counts)}; {len(conflicts)} conflicts; {len(problems)} problems to resolve, {len(problems.notes)} settled by the merge")
     all_users = [f["id"] for f in merged if f.get("affects_all_users")]
     if all_users:
         print("affects all users: " + ", ".join(all_users))

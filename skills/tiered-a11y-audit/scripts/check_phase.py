@@ -18,8 +18,8 @@ It cannot tell this run's files from files an earlier run left in the workspace:
 aside before the run starts is what keeps the answers honest.
 
 A gate only looks at files: whether a finding is true is still for the orchestrator to verify. It does not
-count the "Problems to resolve" of the merge either: that list mixes what the merge corrected itself with
-what needs a decision, so its length says nothing about being done.
+count the "Problems to resolve" of the merge either. That list holds only what needs a decision, but on
+earlier audits a third of it was snippets an agent had retyped; blocking on it waits for a measured run.
 Standard library only.
 """
 from __future__ import annotations
