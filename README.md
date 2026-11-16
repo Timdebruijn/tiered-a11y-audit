@@ -20,7 +20,7 @@ Severity is tracked separately from tier, and the two are independent. A blocker
 
 A run has seven phases. The next list names them in order.
 
-1. **Orient.** A detector reads the repository: frameworks, interface libraries, styling, routing, translations, existing accessibility tooling, suppressed lint rules, interfaces embedded in source strings, vendored themes and build output. From the size of what it finds, it picks how large the audit should be.
+1. **Orient.** One read-only command checks the git and ignore status, looks for an earlier audit and for the tools a runtime scan needs, and runs a detector over the repository: frameworks, interface libraries, styling, routing, translations, existing accessibility tooling, suppressed lint rules, interfaces embedded in source strings, vendored themes and build output. From the size of what it finds, it picks how large the audit should be.
 2. **Ask once.** One message, at most five numbered questions, each with its default, so that answering "ok" answers all of them. The questions cover the ignore file, the runtime, permission to install, whether the running app may be changed, and which flows matter.
 3. **Pre-compute with scripts.** Every accessibility grep, the colour tokens and the failing contrast pairs. With a runtime it also runs axe-core in both colour schemes, walks the page with the Tab key, checks reflow at 320 pixels, text spacing, reduced motion and target sizes, and captures the accessibility tree per view.
 4. **Run six expert lenses in parallel.** Semantics and structure, keyboard and focus, visual perception, forms and input, dynamic content, content and media. Each lens owns a fixed set of the 55 level A and level AA criteria of version 2.2 of the Web Content Accessibility Guidelines, and reports pass, fail, not tested or not applicable for every single one it owns. That is what makes the coverage matrix real instead of guessed.
@@ -148,7 +148,7 @@ The next list gives every directory that matters, with what it holds.
 - `skills/tiered-a11y-audit/agents/experts/` holds the six lenses, the framework-maximizer, and the protocol they share.
 - `skills/tiered-a11y-audit/agents/personas/` holds the eight personas and the protocol they share.
 - `skills/tiered-a11y-audit/references/` holds the tiering rules, the finding schema, the criterion ownership table, the framework playbooks, the report template, the tooling notes, and the report labels per language.
-- `skills/tiered-a11y-audit/scripts/` holds the detector, the pattern scanner, the colour extractor, the contrast tool, the accessibility-tree digest, the runtime scan, the briefing builder, the phase check, the merge and coverage script, the renderer that writes the draft report, and the linter that checks the finished one.
+- `skills/tiered-a11y-audit/scripts/` holds the preflight, the detector, the pattern scanner, the colour extractor, the contrast tool, the accessibility-tree digest, the runtime scan, the briefing builder, the phase check, the merge and coverage script, the renderer that writes the draft report, and the linter that checks the finished one.
 - `evals/` holds the four test cases with their fixture sites. It stays at the repository root, because that is where the evaluation runner looks.
 
 ## Contributing

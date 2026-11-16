@@ -11,10 +11,25 @@ Automated tools find only a minority of WCAG issues (missing names, contrast of 
 
 Never add dependencies to the project's `package.json` without asking. For the runtime scan, use a throwaway directory and ask before installing. Be precise about what the install is: two npm packages, and — unless an installed Google Chrome or Edge is used via `--channel` — a ~150 MB Playwright Chromium download that must match the Playwright version. Prefer the system browser; the script retries with `channel: 'chrome'` on its own when Playwright's Chromium is missing.
 
+## Preflight and workspace set-up (Phases 0 and 1)
+
+```bash
+python3 "SKILL_DIR"/scripts/preflight.py <repo-root>                              # reads only
+python3 "SKILL_DIR"/scripts/preflight.py <repo-root> --start [--ignore all|report]
+```
+
+The first form writes nothing and prints: git repository yes, no, or unknown with the reason (git missing, or git refusing the folder); whether `.a11y-audit/` is ignored, asked of git for a findings file, a screenshot and the stack profile, so `yes` means all three and `partly` means some would be committed (a global ignore file counts, a negated rule does not); the state of the workspace (none, a finished audit, an unfinished run, or not a plain directory); the number of project-owned UI files with the audit size it suggests; run scripts; node; an installed browser; a scratch directory under the system's temp folder; and the detector's output.
+
+The second form creates the workspace and writes `stack-detect.md`. A workspace with a `REPORT.md` is a finished audit: everything in it except `report-labels.<code>.json` moves into `previous/`, and an existing `previous/` becomes `previous-<timestamp>/`. A workspace without a `REPORT.md` is a run in progress and stays; `--fresh` moves it aside too. A workspace that is a file or a symbolic link is refused with exit 2.
+
+`--ignore all` appends `.a11y-audit/` to `.gitignore`, `--ignore report` appends `.a11y-audit/*` with exceptions for `REPORT.md` and `coverage.md`. It only appends, in the file's own line endings, and adds a line once. It adds nothing when a line already ignores the whole folder, says so when that makes `report` impossible, and leaves a symlinked `.gitignore` alone. `--ignore` and `--fresh` are refused without `--start`.
+
+The browser check knows a fixed list of names and the macOS application folder, so a browser installed elsewhere reads as not found. `python3 scripts/test_preflight.py` checks all of this.
+
 ## Running `scripts/axe_scan.mjs`
 
 ```bash
-# A throwaway directory — the session scratchpad if the harness has one, else e.g. /tmp/a11y-scan.
+# A throwaway directory — the session scratchpad if the harness has one, else the one preflight.py offered.
 # It is the scratch dir for every helper script of this audit; name it in the stack profile.
 mkdir -p "$SCRATCH" && cd "$SCRATCH"
 npm init -y >/dev/null
