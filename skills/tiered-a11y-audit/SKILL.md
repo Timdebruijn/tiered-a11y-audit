@@ -31,7 +31,7 @@ The value of this skill comes from two things a generic audit misses, so protect
 
 ## Scripts do the deterministic work
 
-Agents cost tokens and time; scripts cost neither. Everything that is a grep, a parse, a count, a colour calculation or a table is a script in `scripts/`, run once by the orchestrator, and agents start from its output: `detect_stack.py` (stack and tooling), `scan_patterns.py` (every a11y grep), `extract_colors.py` (tokens and failing contrast pairs), `aria_digest.py` (names, headings, landmarks per view), `build_briefs.py` (one briefing file per agent), `merge_findings.py` (merge, tiers, clusters, coverage, persona links, re-audit delta), `render_report_parts.py` (all report tables). If you catch yourself or a subagent doing any of that by hand, stop and use the script.
+Agents cost tokens and time; scripts cost neither. Everything that is a grep, a parse, a count, a colour calculation or a table is a script in `scripts/`, run once by the orchestrator, and agents start from its output: `detect_stack.py` (stack and tooling), `scan_patterns.py` (every a11y grep), `extract_colors.py` (tokens and failing contrast pairs), `aria_digest.py` (names, headings, landmarks per view), `build_briefs.py` (one briefing file per agent), `merge_findings.py` (merge, tiers, clusters, coverage, persona links, re-audit delta), `render_report_parts.py` (the whole draft report: tables, finding blocks, appendices). If you catch yourself or a subagent doing any of that by hand, stop and use the script.
 
 ## Your own output must be accessible
 
@@ -71,7 +71,8 @@ Create `.a11y-audit/` in the repo root. It holds screenshots (easily several MB)
 ├── colour-pairs.md         # colour tokens and failing fg/bg pairs (Phase 3)
 ├── aria-digest.md          # per view: landmarks, headings, nameless controls (Phase 3, runtime only)
 ├── briefs/<agent>.md       # one briefing file per subagent (Phase 3)
-├── report-parts.md         # generated tables and appendices (Phase 6)
+├── REPORT.draft.md         # generated: the whole report with gaps marked WRITE (Phase 6)
+├── report-parts.md         # generated: the tables alone (Phase 6)
 ├── findings/<agent>.json   # one file per expert agent (Phase 4)
 ├── findings/_merged.md     # one line per finding + clusters — the brief for personas (Phase 4)
 ├── findings/_merged.json   # all findings, deduped, tiers derived, persona links (Phases 4–6)
@@ -217,11 +218,11 @@ One progress line when they start, none in between. When all are done, run the m
 3. **Colours**: the visual lens should already have run `scripts/contrast.py` on every contrast finding; fill any gap (`fix` keeps the hue and reports ΔE) so every tier-2 colour change has before/after values and a ratio.
 4. **Re-audit only**: run the merge script with `--previous <repo>/.a11y-audit/previous` to get `delta.md` (resolved / still open / regressed / new by fingerprint); lead the summary with the delta and the score change.
 5. **Score** now and after each tier with the rubric in `references/tiering.md`.
-6. **Generate the tables**, then write the prose:
+6. **Generate the draft, then fill it**:
    ```
    python3 "SKILL_DIR"/scripts/render_report_parts.py <repo>/.a11y-audit --lang <nl|en>
    ```
-   `report-parts.md` holds the tier count table, the per-tier overview tables with report IDs (`T1-01`…), the persona results table, appendix B and appendix C, within the four-column rule. `report-ids.json` maps report IDs to source findings. Paste them; write by hand only the prose, the finding blocks (problem, where, fix, verify) and the persona summaries. Then write `.a11y-audit/REPORT.md` exactly as `references/report-template.md` prescribes, in the user's language; reorder within a tier by (severity × reach) ÷ effort if that differs from the generated order, keeping the IDs; include "what already works well".
+   It writes `REPORT.draft.md`: the whole report in the shape of `references/report-template.md`, with every table, every finding block (fields in the fixed order, values straight from `_merged.json`), the proposed token changes, the structural-advice table, the to-verify list and the appendices. `report-ids.json` maps report IDs (`T1-01`…) to source findings. If it exits non-zero, some findings are in no tier and so in no table: fix their `visual_impact` and merge again before going on. Copy the draft to `.a11y-audit/REPORT.md` and do only two things. First, write what is marked `<!-- WRITE: … -->`: the "In short" and summary prose with the score, the grouping of tier 3, the personas' voice, the advice paragraph, the method summary. Second, translate the finding text into the user's language, keeping IDs, code, selectors, paths and numbers as they are. Never retype, drop or shorten a table or a finding block; edit in place. To reorder within a tier by (severity × reach) ÷ effort, move a block and its table row together and keep the IDs. The report is done when no `WRITE:` marker is left in it.
 7. **Reply** in at most ~15 plain lines, in this order: the score in words ("now 5 out of 10; after tier 1: 7; after tiers 1 and 2: 8; ceiling 9"), any blocker or `affects_all_users` finding in one line each, the top 5 actions as a numbered list of one line each, the counts per tier in one sentence, the report path, and the method caveat in one sentence. No table, no symbols. If the user uses a screen reader or asked for brevity, stop after the top 5 and offer the rest on request.
 
 ## Phase 7 — Wrap up and offer next steps
@@ -245,7 +246,7 @@ Exports, on request or when the context calls for them (a team that works from t
 - `scripts/aria_digest.py` — per-view digest of the accessibility trees: landmarks, headings, nameless controls, duplicate names.
 - `scripts/build_briefs.py` — one briefing file per subagent.
 - `scripts/merge_findings.py` — merges findings, derives tiers, clusters root causes, links persona verdicts, builds the coverage matrix, re-audit delta.
-- `scripts/render_report_parts.py` — generates every report table and appendix with consistent report IDs.
+- `scripts/render_report_parts.py` — generates the draft report (every table, finding block and appendix, with consistent report IDs and the gaps for prose marked).
 - `scripts/export_findings.py` — SARIF 2.1.0, draft ACR conformance table, CSV.
 - `scripts/grade_findings.py` — detection rate, misses and unmatched findings against a ground-truth file (used by the evals).
 - `scripts/contrast.py` — WCAG contrast ratio, minimal hue-preserving fixes, alpha flattening, palette batch mode.

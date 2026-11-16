@@ -101,13 +101,13 @@ python3 "SKILL_DIR"/scripts/grade_findings.py <repo>/.a11y-audit/findings/_merge
 
 The SARIF rule ids are `wcag22/<sc>` with the W3C Understanding page as help URL (derived from the criterion name; verify a link before citing it formally). The grader counts a seeded failure as detected only when a finding cites its criterion, its file and one of its keywords, lists misses, and lists unmatched findings for manual review without deciding whether they are false positives.
 
-## Rendering the report tables (Phase 6)
+## Rendering the draft report (Phase 6)
 
 ```bash
 python3 "SKILL_DIR"/scripts/render_report_parts.py <repo>/.a11y-audit --lang nl
 ```
 
-Writes `report-parts.md` (tier counts, per-tier overview tables with `T1-01`-style report IDs, persona results, appendix B and C, all within four columns and in words) and `report-ids.json`. The orchestrator pastes these and writes only prose and the finding blocks.
+Writes `REPORT.draft.md`, the whole report in the template's shape: every table (within four columns, in words), every finding block with its fields in the fixed order and its values taken from `_merged.json`, the token changes, the structural advice, the to-verify list and the appendices. Places that need judgement or a voice are marked `<!-- WRITE: … -->`; the orchestrator copies the draft to `REPORT.md`, fills those and translates the finding text. Also writes `report-ids.json`, and `report-parts.md` with the tables alone. Exits 1, naming the findings, when a finding has no valid tier and would therefore be in no table. `python3 scripts/test_render.py` checks the draft against the template's rules.
 
 ## Merging findings
 
