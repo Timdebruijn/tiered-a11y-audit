@@ -17,6 +17,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 OWNERSHIP = HERE.parent / "references" / "wcag-ownership.md"
+sys.path.insert(0, str(HERE))
+from lint_report import lint  # noqa: E402
 
 
 def finding(fid, **over):
@@ -103,20 +105,9 @@ def test_minor_findings_get_the_compact_block():
 
 def test_structure_meets_the_read_aloud_rules():
     for lang in ("en", "nl"):
-        _, draft, _ = run(FINDINGS, lang)
-        lines = re.sub(r"```.*?```", "", draft, flags=re.S).splitlines()     # code is not structure
-        for i, line in enumerate(lines):
-            if re.match(r"^\|[-: |]+\|$", line):
-                width = line.count("|") - 1
-                assert width <= 4, f"{lang}: table with {width} columns"
-                j = i + 1
-                while j < len(lines) and lines[j].startswith("|"):
-                    assert lines[j].count("|") - 1 == width, f"{lang}: a row breaks its table: {lines[j][:70]}"
-                    j += 1
-        levels = [len(l) - len(l.lstrip("#")) for l in lines if re.match(r"^#+ ", l)]
-        assert levels[0] == 1 and all(b <= a + 1 for a, b in zip(levels, levels[1:])), f"{lang}: heading level skipped"
-        assert not any(re.match(r"^\s{2,}[-*\d]", l) for l in lines if not l.startswith("     ")), f"{lang}: nested list"
-        assert "<!-- WRITE:" in draft, "no gaps marked for the orchestrator"
+        _, draft, ids = run(FINDINGS, lang)
+        rules = {rule for _, rule, _ in lint(draft, ids)}       # the linter that the finished report has to pass
+        assert rules == {"unwritten"}, f"{lang}: the draft breaks the read-aloud rules by itself: {rules}"
 
 
 def test_dutch_uses_one_word_per_severity():
