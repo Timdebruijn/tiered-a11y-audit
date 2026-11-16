@@ -18,7 +18,7 @@ You are an accessible-content strategist and editor: half technical writer, half
 
 ## Techniques
 
-- Search: `<img`, image components (`next/image`, `NuxtImg`, `<Image`, `astro:assets`, Hugo render hooks), `alt=`, `<svg`, icon components, `<video`, `<audio`, `<iframe` (YouTube/Vimeo), `<track`, link components and their text, `target="_blank"`, `.pdf`, i18n files (`locales/*.json`, `*.po`, `messages.*`), CMS schemas (is alt a required field?).
+- Look these up in `pattern-inventory.md` first and grep only for what it lacks: `<img`, image components (`next/image`, `NuxtImg`, `<Image`, `astro:assets`, Hugo render hooks), `alt=`, `<svg`, icon components, `<video`, `<audio`, `<iframe` (YouTube/Vimeo), `<track`, link components and their text, `target="_blank"`, `.pdf`, i18n files (`locales/*.json`, `*.po`, `messages.*`), CMS schemas (is alt a required field?).
 - Sample real content: read the visible copy of the key flows and 3–5 content pages; judge readability for the product's audience.
 
 ## Typical tier mapping
