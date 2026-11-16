@@ -61,7 +61,7 @@ def lint(text: str, ids: dict | None = None) -> list:
             continue                                            # inside a code span: an example, not a gap
         what = " ".join(m.group(1).split())
         out.append((nofence.count("\n", 0, m.start()) + 1, "unwritten",
-                    f"still to write: {what[6:70].strip()}" if what.startswith("WRITE:") else "a comment from the draft is left: delete it"))
+                    f"still to write: {what[6:70].strip()}" if what.startswith("WRITE:") else "a comment is left in the report: take it out of report-prose.md and render again (in a report made by hand: delete it)"))
     structure = blank_out(nofence, r"<!--.*?-->", re.S)
     prose = blank_out(blank_out(blank_out(structure, r"`[^`\n]*`"), r"\]\([^)\n]*\)"), r"\w+://\S+")
     lines, plines = structure.split("\n"), prose.split("\n")

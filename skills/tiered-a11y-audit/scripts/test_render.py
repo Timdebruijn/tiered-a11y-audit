@@ -43,13 +43,17 @@ FINDINGS = [
 ]
 
 
+LAST_WS = None        # the workspace of the latest run() that built one
+
+
 def run(findings, lang="en", ws=None, extra=None, personas=None):
     if ws is not None:
         r = subprocess.run([sys.executable, str(HERE / "render_report_parts.py"), str(ws), "--lang", lang], capture_output=True, text=True)
         draft = (ws / "REPORT.draft.md").read_text(encoding="utf-8") if (ws / "REPORT.draft.md").exists() else ""
         return r, draft, ws
+    global LAST_WS
     d = tempfile.mkdtemp()
-    ws = Path(d) / ".a11y-audit"
+    ws = LAST_WS = Path(d) / ".a11y-audit"
     (ws / "findings").mkdir(parents=True)
     (Path(d) / "src").mkdir()
     (Path(d) / "src" / "page.html").write_text("<main>\n<div onclick>\n</div>\n", encoding="utf-8")
@@ -147,6 +151,113 @@ def test_the_flow_table_of_a_persona_is_read_by_position_not_by_english_words():
     assert "| Taak | screen-reader |" not in draft, "the translated header row became a result row"
     assert "| Flow bestellen | screen-reader | mislukt | Knop zonder naam |" in draft, "a flow whose name starts with Flow was dropped"
     assert "| Contact | screen-reader | voltooid | geen |" in draft
+
+
+PERSONA = ("# Screen reader user\n\n## Flow results\n| Flow | Result | Feel | Main obstacle |\n|---|---|---|---|\n"
+           "| Contact | failed | slow | KBD-001 |\n\n## In my own words\nI could not send the form.\n\n## Top 3 frustrations\n1. The button.\n")
+
+
+def write_prose(ws, texts):
+    (ws / "report-prose.md").write_text("<!-- a hint that must not reach the report -->\n\n"
+                                        + "".join(f"=== {k} ===\n<!-- hint -->\n{v}\n\n" for k, v in texts.items()), encoding="utf-8")
+
+
+def test_the_report_is_assembled_from_the_prose_file_and_never_edited_by_hand():
+    r, draft, ids = run(FINDINGS, "en", personas={"screen-reader-user": PERSONA})
+    ws = LAST_WS
+    prose_file = ws / "report-prose.md"
+    keys = re.findall(r"(?m)^=== (.+) ===$", prose_file.read_text(encoding="utf-8"))
+    assert keys == ["in-short", "summary", "top5-closing", "works-well", "tier3", "persona-screen-reader-user", "advice-tooling", "method", "legal"], keys
+    assert all(f"[{k}]" in draft for k in keys), "a gap in the draft does not name its key"
+    assert not (ws / "REPORT.md").exists() and "report-prose.md created" in r.stdout, "a report was written before anyone wrote its prose"
+
+    t3 = next(rid for rid, m in ids.items() if m["tier"] == 3)
+    texts = {k: f"Text for {k}." for k in keys if k != "legal"}
+    texts["works-well"] = "- The one positive that was chosen."
+    texts["tier3"] = f"### Design\n\n- {t3}: redo it, for everyone, a week."
+    write_prose(ws, texts)
+    r, _, _ = run(None, "en", ws)
+    report = (ws / "REPORT.md").read_text(encoding="utf-8")
+    assert "every gap has its text" in r.stdout, r.stdout
+    assert "<!--" not in report, "a comment or an unfilled gap reached the report"
+    for k, v in texts.items():
+        assert v in report, f"the text for {k} is not in the report"
+    assert "- One main landmark." not in report and "Title of CNT-001 (serious; small)" not in report, "the list to choose from was kept next to the choice"
+    assert "Legal context" not in report, "an optional block without text kept its heading"
+    for rid, meta in ids.items():
+        if meta["tier"] != 3:
+            assert block_of(report, rid) == block_of(draft, rid), f"{rid}: the finding block changed between draft and report"
+    assert lint(report, ids) == [], lint(report, ids)
+
+    texts["summary"], texts["legal"] = "", "The public sector rules apply."
+    write_prose(ws, texts)
+    r, _, _ = run(None, "en", ws)
+    report = (ws / "REPORT.md").read_text(encoding="utf-8")
+    assert "still to write: summary" in r.stdout and "<!-- WRITE: [summary]" in report, "an empty section did not stay a gap"
+    unwritten = [m for _, rule, m in lint(report, ids) if rule == "unwritten"]
+    assert len(unwritten) == 1 and unwritten[0].startswith("still to write: [summary]"), unwritten
+    assert "### D. Legal context\n\nThe public sector rules apply." in report
+
+
+def test_the_prose_file_is_only_ever_added_to():
+    run(FINDINGS, "en", personas={"screen-reader-user": PERSONA})
+    ws = LAST_WS
+    write_prose(ws, {"in-short": "My own words, which took an hour."})
+    (ws / "personas" / "low-vision-user.md").write_text(PERSONA.replace("Screen reader", "Low vision"), encoding="utf-8")
+    r, _, _ = run(None, "en", ws)
+    text = (ws / "report-prose.md").read_text(encoding="utf-8")
+    assert text.startswith("<!-- a hint that must not reach the report -->") and "My own words, which took an hour." in text, "written prose was overwritten"
+    assert text.count("=== in-short ===") == 1 and "=== persona-low-vision-user ===" in text and "=== summary ===" in text, "missing sections were not added"
+    assert "new sections were added" in r.stdout
+    before = text
+    run(None, "en", ws)
+    assert (ws / "report-prose.md").read_text(encoding="utf-8") == before, "a run with nothing new changed the prose file"
+
+
+def test_a_prose_file_that_would_put_the_wrong_text_in_the_report_is_refused():
+    run(FINDINGS, "en")
+    ws = LAST_WS
+    write_prose(ws, {"in-short": "The first version."})
+    run(None, "en", ws)
+    first = (ws / "REPORT.md").read_text(encoding="utf-8")
+    assert "The first version." in first
+    for label, texts, word in (("a line of prose that looks like a marker", {"in-short": "Start.\n=== note ===\nThe rest, which would vanish."}, "note"),
+                               ("a key with a typo", {"in-short": "Fine.", "sumary": "Lost."}, "sumary")):
+        write_prose(ws, texts)
+        r, _, _ = run(None, "en", ws)
+        assert r.returncode != 0 and word in r.stderr and "REPORT.md was not written" in r.stderr, f"{label}: {r.returncode} {r.stderr}"
+        assert (ws / "REPORT.md").read_text(encoding="utf-8") == first, f"{label}: a report was written anyway"
+    (ws / "report-prose.md").write_text("=== summary ===\nThe real one.\n\n=== summary ===\n\n", encoding="utf-8")
+    r, _, _ = run(None, "en", ws)
+    assert r.returncode != 0 and "summary more than once" in r.stderr, r.stderr
+
+
+def test_a_report_is_left_alone_until_some_prose_is_written():
+    run(FINDINGS, "en")
+    ws = LAST_WS
+    (ws / "REPORT.md").write_text("A report someone made by hand, before this file existed.\n", encoding="utf-8")
+    r, _, _ = run(None, "en", ws)                      # the prose file exists now, with every section still empty
+    assert (ws / "REPORT.md").read_text(encoding="utf-8").startswith("A report someone made by hand"), "an existing report was replaced by a draft full of gaps"
+    assert "has no text yet" in r.stdout and r.returncode == 0, r.stdout
+
+
+def test_new_sections_land_on_their_own_line_and_odd_persona_names_get_a_usable_key():
+    spaced = PERSONA.replace("Screen reader", "Low vision")
+    run(FINDINGS, "en", personas={"low vision user": spaced})
+    ws = LAST_WS
+    assert "=== persona-low-vision-user ===" in (ws / "report-prose.md").read_text(encoding="utf-8"), "a space in a file name made a key no marker line can hold"
+    (ws / "report-prose.md").write_text("=== in-short ===\nNo newline after this", encoding="utf-8")
+    for _ in range(3):
+        run(None, "en", ws)
+    text = (ws / "report-prose.md").read_text(encoding="utf-8")
+    assert "No newline after this\n=== summary ===" in text, "a new section was glued to the last line of the text before it"
+    assert text.count("=== summary ===") == 1 and text.count("=== persona-low-vision-user ===") == 1, "sections were added again on a later run"
+    assert "No newline after this\n" in (ws / "REPORT.md").read_text(encoding="utf-8") and "===" not in (ws / "REPORT.md").read_text(encoding="utf-8")
+
+
+def test_a_tier_without_findings_still_asks_for_the_standing_advice():
+    _, draft, _ = run([FINDINGS[0]])
+    assert "[tier3] no finding landed in this tier" in draft and "sort the items into five H3 blocks" not in draft
 
 
 def test_the_draft_no_longer_asks_for_a_translation():

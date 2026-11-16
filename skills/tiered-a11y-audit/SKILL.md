@@ -72,7 +72,8 @@ Create `.a11y-audit/` in the repo root. It holds screenshots (easily several MB)
 ├── aria-digest.md          # per view: landmarks, headings, nameless controls (Phase 3, runtime only)
 ├── briefs/<agent>.md       # one briefing file per subagent (Phase 3)
 ├── briefs/_agents.json     # generated: the agents of this run, read by the phase check (Phase 3)
-├── REPORT.draft.md         # generated: the whole report with gaps marked WRITE (Phase 6)
+├── REPORT.draft.md         # generated: the whole report with gaps marked WRITE, for reading (Phase 6)
+├── report-prose.md         # your text for those gaps, one section per gap: the only part of the report you write (Phase 6)
 ├── report-parts.md         # generated: the tables alone (Phase 6)
 ├── findings/<agent>.json   # one file per expert agent (Phase 4)
 ├── findings/_merged.md     # one line per finding + clusters — the brief for personas (Phase 4)
@@ -82,7 +83,7 @@ Create `.a11y-audit/` in the repo root. It holds screenshots (easily several MB)
 ├── personas/<persona>.md   # one file per persona agent (Phase 5)
 ├── previous/               # re-audit: the whole earlier audit, moved here by preflight.py --start
 ├── delta.md                # re-audit: resolved / open / new / regressed (Phase 6)
-└── REPORT.md               # the deliverable (Phase 6)
+└── REPORT.md               # the deliverable, assembled by the renderer from the draft and your prose; never edited by hand (Phase 6)
 ```
 
 `SKILL_DIR` below means the directory containing this SKILL.md. Resolve it to an absolute path (e.g. `~/.claude/skills/tiered-a11y-audit` or the plugin's install path) and quote it everywhere — a plugin path can contain spaces, and subagents cannot guess it.
@@ -254,15 +255,19 @@ One progress line when they start, none in between. When all are done, run the m
 3. **Colours**: the visual lens should already have run `scripts/contrast.py` on every contrast finding; fill any gap (`fix` keeps the hue and reports ΔE) so every tier-2 colour change has before/after values and a ratio.
 4. **Re-audit only**: run the merge script with `--previous <repo>/.a11y-audit/previous` to get `delta.md` (resolved / still open / regressed / new by fingerprint); lead the summary with the delta and the score change.
 5. **Score** now and after each tier with the rubric in `references/tiering.md`.
-6. **Generate the draft, then fill it**:
+6. **Render, write the prose, render again**:
    ```
    python3 "SKILL_DIR"/scripts/render_report_parts.py <repo>/.a11y-audit --lang <language code of the report>
    ```
-   It writes `REPORT.draft.md`: the whole report in the shape of `references/report-template.md`, with every table, every finding block (fields in the fixed order, values straight from `_merged.json`), the proposed token changes, the structural-advice table, the to-verify list and the appendices. `report-ids.json` maps report IDs (`T1-01`…) to source findings. The fixed words of the report (headings, field labels, severity words, the sentences that announce tables) come from a labels file. English and Dutch ship with the skill. For any other language the first run stops and writes `report-labels.<code>.json` into the workspace: translate its values once, keeping the keys and every `{placeholder}`, and run the command again; the script checks the file before it uses it. If it exits non-zero, some findings are in no tier and so in no table: fix their `visual_impact` and merge again before going on. Copy the draft to `.a11y-audit/REPORT.md` and write what is marked `<!-- WRITE: … -->`: the "In short" and summary prose with the score, the grouping of tier 3, the personas' voice, the advice paragraph, the method summary. The finding text is already in the report language, because the agents wrote it that way; if a finding slipped through in another language, correct it in its findings file, merge and render again instead of translating the report. Never retype, drop or shorten a table or a finding block; edit in place. To reorder within a tier by (severity × reach) ÷ effort, move a block and its table row together and keep the IDs. Delete the comment at the top of the draft. Then check the result:
+   It writes `REPORT.draft.md`: the whole report in the shape of `references/report-template.md`, with every table, every finding block (fields in the fixed order, values straight from `_merged.json`), the proposed token changes, the structural-advice table, the to-verify list and the appendices. `report-ids.json` maps report IDs (`T1-01`…) to source findings. The fixed words of the report (headings, field labels, severity words, the sentences that announce tables) come from a labels file. English and Dutch ship with the skill. For any other language the first run stops and writes `report-labels.<code>.json` into the workspace: translate its values once, keeping the keys and every `{placeholder}`, and run the command again; the script checks the file before it uses it. If it exits non-zero, some findings are in no tier and so in no table: fix their `visual_impact` and merge again before going on.
+
+   The first run also creates `report-prose.md`: one section per place where the report needs your judgement or voice, each with its hint and, where there is something to choose from or to sort, that list. That is the only file of the report you write: the "In short" and summary prose with the score, the positives worth keeping, the grouping of tier 3, the personas' voice, the advice, the method summary. Read `report-parts.md` for the numbers; you do not need to read the whole draft. Write all sections in one go, then run the same command again: it puts your text into the draft and writes `REPORT.md`. A section you leave empty stays a marked gap, except the optional ones, which are left out with their heading. If the command says a section is there twice or is no gap of this report, it has written nothing: correct the prose file and run it again.
+
+   You never open `REPORT.md` to edit it. To change the prose, change `report-prose.md`; to change a finding, change its findings file and merge; then render again. Editing a file of a thousand lines by hand is slow and is how a finding block gets damaged. The finding text is already in the report language, because the agents wrote it that way; if a finding slipped through in another language, correct it in its findings file, merge and render again instead of translating the report. Findings are ordered within a tier by severity, then effort; if impact per effort puts another one first, say so in the summary rather than moving blocks. Then check the result:
    ```
    python3 "SKILL_DIR"/scripts/lint_report.py <repo>/.a11y-audit/REPORT.md --workspace <repo>/.a11y-audit
    ```
-   It lists, with line numbers, every gap still marked `WRITE`, every report ID that was dropped, duplicated or invented, and every break of the read-aloud rules above that a script can decide: table width and empty cells, a table without an announcing sentence, skipped heading levels, nested lists, emoji, arrows, slashes in running text, ratios written with a colon, long bold. Fix what it lists and run it again. The report is done when it exits 0, not before; do not reply to the user with a report that fails it. Close with the phase check for phase 6, which also confirms that the draft was rendered after the last merge and that a re-audit has its delta.
+   It lists, with line numbers, every gap still marked `WRITE`, every report ID that was dropped, duplicated or invented, and every break of the read-aloud rules above that a script can decide: table width and empty cells, a table without an announcing sentence, skipped heading levels, nested lists, emoji, arrows, slashes in running text, ratios written with a colon, long bold. Fix what it lists at its source (a slash or a ratio in a finding's text is corrected in the findings file, one in your own prose in `report-prose.md`), render and run it again. The report is done when it exits 0, not before; do not reply to the user with a report that fails it. Close with the phase check for phase 6, which also confirms that the draft was rendered after the last merge and that a re-audit has its delta.
 7. **Reply** in at most ~15 plain lines, in this order: the score in words ("now 5 out of 10; after tier 1: 7; after tiers 1 and 2: 8; ceiling 9"), any blocker or `affects_all_users` finding in one line each, the top 5 actions as a numbered list of one line each, the counts per tier in one sentence, the report path, and the method caveat in one sentence. No table, no symbols. If the user uses a screen reader or asked for brevity, stop after the top 5 and offer the rest on request.
 
 ## Phase 7 — Wrap up and offer next steps
@@ -288,7 +293,7 @@ Exports, on request or when the context calls for them (a team that works from t
 - `scripts/build_briefs.py` — one briefing file per subagent with only the reference parts that agent acts on, each lens's with the start of its findings file, and the list of agents for the phase check.
 - `scripts/check_phase.py` — the phase check: what phases 3, 4, 5 and 6 must have left before the next one starts.
 - `scripts/merge_findings.py` — merges findings, derives tiers, clusters root causes, links persona verdicts, builds the coverage matrix, re-audit delta.
-- `scripts/render_report_parts.py` — generates the draft report (every table, finding block and appendix, with consistent report IDs and the gaps for prose marked).
+- `scripts/render_report_parts.py` — generates the draft report (every table, finding block and appendix, with consistent report IDs and the gaps for prose marked), the prose file with one section per gap, and from those two the report itself.
 - `scripts/lint_report.py` — checks the finished report: no gap left, every report ID present once, the read-aloud rules kept.
 - `scripts/export_findings.py` — SARIF 2.1.0, draft ACR conformance table, CSV.
 - `scripts/grade_findings.py` — detection rate, misses and unmatched findings against a ground-truth file (used by the evals).

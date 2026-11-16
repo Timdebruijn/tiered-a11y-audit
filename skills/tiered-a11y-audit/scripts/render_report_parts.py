@@ -1,23 +1,28 @@
 #!/usr/bin/env python3
-"""Render the deterministic parts of the report so the orchestrator only writes prose and fix blocks.
+"""Render the report: every table and finding block from the data, and the prose from one small file.
 
     python3 render_report_parts.py <repo>/.a11y-audit [--lang <code>]
 
-Reads findings/_merged.json, findings/<agent>.json, coverage.md and personas/*.md. Writes:
-  REPORT.draft.md   the whole report in the shape of references/report-template.md: every table, every
-                    finding block with its fields in the fixed order, the token changes, the structural
-                    advice, the to-verify list and the appendices. What needs judgement or a human voice
-                    is left as a marked gap: <!-- WRITE: … -->. Copy it to REPORT.md and fill the gaps.
+Reads findings/_merged.json, findings/<agent>.json, coverage.md, personas/*.md and report-prose.md. Writes:
+  REPORT.draft.md   the whole report in the shape of references/report-template.md, for reading: every table,
+                    every finding block with its fields in the fixed order, the token changes, the structural
+                    advice, the to-verify list and the appendices. What needs judgement or a human voice is a
+                    marked gap with a key: <!-- WRITE: [key] hint -->.
+  report-prose.md   one section per gap, "=== key ===" followed by the hint. The first run creates it; a later
+                    run only adds sections for gaps that are new. The orchestrator writes its text there.
+  REPORT.md         written once report-prose.md exists: the draft with every gap replaced by the text under
+                    its key. A gap without text stays a marked gap, and the linter reports it. Nobody edits
+                    this file by hand: change the prose file or a findings file and run this script again.
   report-parts.md   the tables alone (tier counts, per-tier overviews with report IDs T1-01 …, persona
-                    results, appendix B and C), kept for anything that still reads it
-  report-ids.json   report ID → source finding (so IDs stay consistent while writing)
+                    results, appendix B and C): what the orchestrator reads to write the prose
+  report-ids.json   report ID → source finding
 Every value in a finding block comes from _merged.json, so nothing is retyped and nothing can be dropped
 or altered on the way into the report. The agents write their finding text in the report language, so it
 goes in as it is; a contrast written as 4.5:1 is put into words on the way. The fixed words of the report come from a labels file, so any
 language works: en and nl ship with the skill, and for another one the first run writes
 report-labels.<code>.json into the workspace to be translated once (see labels.py).
-Findings are ordered within a tier by severity, then effort (S before L); reorder in the report if
-impact-per-effort says otherwise, but keep the IDs. Tables stay within four columns and use words only.
+Findings are ordered within a tier by severity, then effort (S before L). Tables stay within four columns
+and use words only.
 """
 from __future__ import annotations
 
@@ -77,6 +82,67 @@ def persona_rows(pdir: Path, t):
                     rows.append((cells[0], name, classify_result(cells[1], t), cells[3] or t["none"]))
     return rows
 
+
+
+PROSE = "report-prose.md"
+PROSE_HEAD = """<!-- The prose of the report: one section per gap of REPORT.draft.md.
+     Write your text under each "=== key ===" line, in the report language. Leave those lines as they are.
+     Everything inside a comment like this one is dropped, so a hint or a list to choose from can stay.
+     A section left empty stays a gap in the report; the optional ones are then left out with their heading.
+     Then run render_report_parts.py again: it writes REPORT.md. Do not edit REPORT.md by hand. -->
+"""
+
+
+class Gap:
+    """A place where the report needs judgement or a human voice. In the draft it is a marked gap with a hint;
+    in the report it is the text written under its key in the prose file."""
+
+    def __init__(self, key, hint, before=(), material=(), optional=False):
+        self.key, self.hint, self.before, self.material, self.optional = key, hint, list(before), list(material), optional
+
+    def draft(self):
+        return self.before + [WRITE.format(f"[{self.key}] {self.hint}"), ""] + (self.material + [""] if self.material else [])
+
+    def final(self, prose: dict):
+        if prose.get(self.key):
+            return self.before + [prose[self.key], ""]
+        return [] if self.optional else self.draft()
+
+
+def read_prose(path: Path):
+    """({key: text} with comments dropped, [keys that occur more than once]), or (None, []) when there is no prose file yet."""
+    if not path.is_file():
+        return None, []
+    parts = re.split(r"(?m)^=== ([\w.-]+) ===[ \t]*$", path.read_text(encoding="utf-8", errors="replace"))
+    keys = parts[1::2]
+    prose = {key: re.sub(r"<!--.*?-->", "", body, flags=re.S).strip() for key, body in zip(keys, parts[2::2])}
+    return prose, sorted({k for k in keys if keys.count(k) > 1})
+
+
+def add_prose_sections(path: Path, gaps: list, known) -> int:
+    """Append a section for each gap the prose file does not have yet. What is already written there is never touched."""
+    new = [g for g in gaps if g.key not in known]
+    if not new:
+        return 0
+    quiet = lambda text: str(text).replace("-->", "->")           # nothing in a hint may end the comment it sits in
+    out = [] if path.exists() else [PROSE_HEAD]
+    for g in new:
+        out += [f"=== {g.key} ===", f"<!-- {quiet(g.hint)}{' Optional: leave empty to leave it out.' if g.optional else ''} -->"]
+        if g.material:
+            out += ["<!-- to choose from or to sort:"] + [quiet(line) for line in g.material] + ["-->"]
+        out += ["", ""]
+    glue = "\n" if path.exists() and not path.read_text(encoding="utf-8", errors="replace").endswith("\n") else ""
+    with path.open("a", encoding="utf-8") as f:
+        f.write(glue + "\n".join(out))
+    return len(new)
+
+
+def flat(items: list, prose) -> list:
+    """The document as lines: gaps as marked gaps (prose is None, the draft) or as the written text (the report)."""
+    out = []
+    for x in items:
+        out += (x.draft() if prose is None else x.final(prose)) if isinstance(x, Gap) else [x]
+    return out
 
 
 TO1 = "{r} to 1"        # main() sets it from the labels of the report language
@@ -168,7 +234,7 @@ def persona_notes(pdir: Path, src_to_rep: dict):
         pick = lambda key: " ".join(v for k, vs in sections.items() if key in k for v in vs)
         raw = f"narrative: {pick('own words')} / top frustrations: {pick('frustration')} / a 10 for me: {pick('make this a 10')}"
         raw = re.sub(r"\b([A-Z]{3}-\d{3})\b", lambda m: src_to_rep.get(m.group(1), m.group(1)), raw).replace("--", "-")
-        notes.append((title, raw))
+        notes.append((p.stem, title, raw))
     return notes
 
 
@@ -260,31 +326,31 @@ def main():
 
     # ---- REPORT.draft.md: the whole report, gaps marked ------------------------------------
     project = ws.resolve().parent.name
-    d = ["<!-- GENERATED DRAFT of the report. Copy it to REPORT.md, then:",
-         "     1. write every part marked WRITE and delete the marker;",
-         "     2. leave the finding text as it is: the agents wrote it in the report language. A finding in another language",
-         "        is corrected in its findings file and rendered again, not translated here;",
-         "     3. do not retype or reorder tables and finding blocks: edit them in place, and keep every report ID;",
-         "     4. delete this comment and run lint_report.py on the report until it exits 0.",
-         f"     Facts: generated {date.today().isoformat()}; {len(findings)} findings; "
-         f"{len(data.get('problems') or [])} problems still listed in findings/_merged.md. -->", "",
+    head = ["<!-- GENERATED DRAFT of the report, for reading. Do not copy or edit it.",
+            "     1. write the text for every gap marked WRITE in report-prose.md, under the line with that gap's key;",
+            "     2. run render_report_parts.py again: it writes REPORT.md from this draft and your text;",
+            "     3. a gap that says something is missing in a finding is closed in that finding's file, followed by a merge;",
+            "     4. run lint_report.py on REPORT.md until it exits 0. Finding text is left as it is: the agents wrote it in the report language.",
+            f"     Facts: generated {date.today().isoformat()}; {len(findings)} findings; "
+            f"{len(data.get('problems') or [])} problems still listed in findings/_merged.md. -->", ""]
+    d = [
          f"# {t['report']}: {project}", "",
          f"## {t['short']}", "",
-         WRITE.format("five to eight plain sentences, no table and no list: what was audited, the score now and after each tier in words, "
-                      "the single most important thing to fix, and how many days tier 1 costs"), "",
+         Gap("in-short", "five to eight plain sentences, no table and no list: what was audited, the score now and after each tier in words, "
+                         "the single most important thing to fix, and how many days tier 1 costs"),
          f"## {t['summary']}", "",
-         WRITE.format("one paragraph: the score now and after each tier, each with a one-sentence justification"), "",
+         Gap("summary", "one paragraph: the score now and after each tier, each with a one-sentence justification"),
          t["ann_counts"], ""] + counts_table + ["", f"**{t['top5']}**", ""]
     top = sorted(findings, key=lambda f: (f.get("severity") != "blocker", not f.get("affects_all_users"),
                                           SEV.get(f.get("severity"), 9), f["tier"], EFF.get(f.get("effort"), 9)))[:5]
     d += [f"{i}. " + t["top_line"].format(rid=f["report_id"], tier=f["tier"], eff=eff(f), title=cell(f.get("title"))) + flag_of(f)
           for i, f in enumerate(top, 1)]
-    d += ["", WRITE.format("reorder the five above only if impact per effort says otherwise; then one closing paragraph: "
-                           "date, commit, scope, stack, standard (WCAG 2.2 level A and AA) and method"), ""]
+    d += ["", Gap("top5-closing", "one closing paragraph: date, commit, scope, stack, standard (WCAG 2.2 level A and AA) and method. The five above are "
+                                  "ordered by severity and effort; if impact per effort puts another first, say so here")]
     delta = data.get("delta")
     if isinstance(delta, dict):
         fp_to = {str(f.get("fingerprint", "")).strip().lower(): f for f in findings}
-        d += [f"## {t['changes']}", "", WRITE.format("the score then and now in words, and one sentence on what the team got right and what slipped back"), ""]
+        d += [f"## {t['changes']}", "", Gap("changes", "the score then and now in words, and one sentence on what the team got right and what slipped back")]
         for key in ("resolved", "still_open", "regressed", "new"):
             d += [f"### {t['delta_h'][key]} ({len(delta.get(key) or [])})", ""]
             d += [f"- {fp_to[fp]['report_id']}: {cell(fp_to[fp].get('title'))}" if fp in fp_to else f"- {fp}" for fp in delta.get(key) or []] or [t["nothing"]]
@@ -293,9 +359,8 @@ def main():
     for para in t["howto_p"]:
         d += [para, ""]
     positives = [x for xs in (data.get("positives") or {}).values() for x in xs if isinstance(x, str)]
-    d += [f"## {t['works']}", "", WRITE.format("keep the three to eight most specific of these"), ""]
-    d += [f"- {cell(x)}" for x in positives] or [t["nothing"]]
-    d.append("")
+    d += [f"## {t['works']}", ""]
+    d += [Gap("works-well", "one list of the three to eight most specific of these", material=[f"- {cell(x)}" for x in positives])] if positives else [t["nothing"], ""]
 
     for tier in (1, 2):
         fs = by_tier[tier]
@@ -327,39 +392,41 @@ def main():
         d += ownership[tier]
 
     fs = by_tier[3]
-    d += [f"## {t['t3']}", "", t["tier_p"]["3"].format(n=len(fs)), "",
-          WRITE.format("sort the items below into five H3 blocks in this fixed order: Design, Content, Features, Validation with users, "
-                       "Process and governance. One list per block, one line per item: what, why (which users or criteria), rough effort. "
-                       "Add the standing tier-3 advice (testing with disabled users, CI gate) where no finding covers it. No tables here"), ""]
-    d += [f"- {f['report_id']}: {cell(f.get('title'))} ({sev(f)}; {eff(f)})" for f in fs] or [t["nothing"]]
-    d += [""] + ownership[3]
+    d += [f"## {t['t3']}", "", t["tier_p"]["3"].format(n=len(fs)), ""]
+    d += [Gap("tier3", "no finding landed in this tier: write the standing tier-3 advice (testing with disabled users, a CI gate) as one short list")] if not fs else [
+          Gap("tier3", "sort the items into five H3 blocks in this fixed order: Design, Content, Features, Validation with users, "
+                       "Process and governance. One list per block, one line per item, starting with its report ID: what, why (which users or "
+                       "criteria), rough effort. Add the standing tier-3 advice (testing with disabled users, CI gate) where no finding covers it. "
+                       "No tables here", material=[f"- {f['report_id']}: {cell(f.get('title'))} ({sev(f)}; {eff(f)})" for f in fs])]
+    d += ownership[3]
 
     notes = persona_notes(ws / "personas", src_to_rep)
-    d += [f"## {t['voice']}", "", t["voice_p"].format(names=", ".join(n for n, _ in notes) or t["none"]), ""]
+    d += [f"## {t['voice']}", "", t["voice_p"].format(names=", ".join(n for _, n, _ in notes) or t["none"]), ""]
     if rows:
         d += [t["ann_personas"].format(n=len(rows)), ""] + persona_table + [""]
-    for name, raw in notes:
-        d += [f"### {name}", "", WRITE.format("three or four sentences from the narrative, the top frustration with its report ID, and what would "
-                                             "make it a 10; say so where this persona and an expert disagree. Source: " + raw), ""]
+    for stem, name, raw in notes:
+        d += [f"### {name}", "", Gap("persona-" + re.sub(r"[^\w.-]+", "-", stem), "three or four sentences from the narrative, the top frustration with its report ID, and what would "
+                                                          "make it a 10; say so where this persona and an expert disagree. Source: " + raw)]
 
     lev = data.get("leverage_entries") or []
     d += [f"## {t['advice']}", ""]
     if lev:
-        d += [WRITE.format("one introductory paragraph"), "", t["ann_advice"].format(n=len(lev)), "",
+        d += [Gap("advice-intro", "one introductory paragraph for the table of places that resolve several findings at once"), t["ann_advice"].format(n=len(lev)), "",
               "| " + " | ".join(t["adv_cols"]) + " |", "|---|---|---|---|"]
         d += [f"| {cell(e.get('location') or e.get('title'))[:60]} | {', '.join(sorted({src_to_rep.get(s, s) for s in e.get('resolves') or []}))} | "
               f"{t['effort_unit'].get(e.get('effort'), e.get('effort') or '?')} | {cell(e.get('note') or t['none'])[:90]} |" for e in lev]
     else:
         d.append(t["no_advice"])
-    d += ["", WRITE.format("one list with the recommended lint, test and CI setup so fixes do not regress; and, if the project documents "
-                           "an earlier accessibility claim, one sentence on what this audit found against it"), ""]
+    d += ["", Gap("advice-tooling", "one list with the recommended lint, test and CI setup so fixes do not regress; and, if the project documents "
+                                    "an earlier accessibility claim, one sentence on what this audit found against it")]
 
     low = [f for f in findings if f.get("confidence") == "low"]
     d += [f"## {t['verify_h']}", ""]
     d += [f"- {f['report_id']}: {cell(f.get('title'))}. {one(f.get('verify'), 'what to check')}" for f in low] or [t["nothing"]]
 
     d += ["", f"## {t['appendix']}", "", f"### {t['appx']['a']}", "",
-          WRITE.format("what was static, what ran at runtime, what was automated, what was out of scope; use the lines below"), ""]
+          Gap("method", "what was static, what ran at runtime, what was automated, what was out of scope, and whether anyone confirmed the "
+                        "Phase 1 choices; the generated lines per agent follow your text")]
     for p in sorted((ws / "findings").glob("*.json")):
         if p.name.startswith("_"):
             continue
@@ -374,18 +441,41 @@ def main():
     d += ["", f"### {t['appx']['b']}", "", t["cov_counts"].format(p=cc.get("pass", 0), f=cc.get("fail", 0), nt=cc.get("not-tested", 0),
                                                               na=cc.get("n/a", 0)), "", t["ann_cov"], ""] + cov_table
     d += ["", f"### {t['appx']['c']}", "", t["ann_full"].format(n=len(findings)), ""] + full_table
-    d += ["", f"### {t['appx']['d']}", "",
-          WRITE.format("only if the user or the repository raised it (EN 301 549, European Accessibility Act, public sector); otherwise delete this block"), ""]
-    draft = "\n".join(d) + "\n"
+    d += [Gap("legal", "only if the user or the repository raised it: EN 301 549, European Accessibility Act, public sector",
+              before=["", f"### {t['appx']['d']}", ""], optional=True)]
+    draft = "\n".join(head + flat(d, None)) + "\n"
     (ws / "REPORT.draft.md").write_text(draft, encoding="utf-8")
+    gaps = [x for x in d if isinstance(x, Gap)]
+    prose_path = ws / PROSE
+    prose, twice = read_prose(prose_path)
+    added = add_prose_sections(prose_path, gaps, prose or {})
+    known = {g.key for g in gaps}
+    stray = sorted(k for k in (prose or {}) if k not in known)
+    written = prose is not None and any(prose.get(g.key) for g in gaps)
+    if written and not twice and not stray:
+        (ws / "REPORT.md").write_text("\n".join(flat(d, prose)) + "\n", encoding="utf-8")
 
     if dropped:
         print(f"!! {len(dropped)} findings have no valid tier and are in NO table or block: {', '.join(map(str, dropped))}; "
               "fix visual_impact in their findings file and merge again", file=sys.stderr)
     print(f"REPORT.draft.md: {len(findings)} finding blocks ({', '.join(f'T{k}: {v}' for k, v in sorted(counters.items()))}), "
-          f"{draft.count('<!-- WRITE')} gaps left to write, {len(rows)} persona rows, coverage {'included' if cov.exists() else 'missing'}; "
-          "report-parts.md and report-ids.json written")
-    return 1 if dropped else 0
+          f"{len(rows)} persona rows, coverage {'included' if cov.exists() else 'missing'}; report-parts.md and report-ids.json written")
+    if twice or stray:
+        # Either would put the wrong text in the report without anyone noticing, so no report is written until it is settled.
+        if twice:
+            print(f"!! {PROSE} has the section {', '.join(twice)} more than once: keep one. REPORT.md was not written.", file=sys.stderr)
+        if stray:
+            print(f"!! {PROSE} has a section {', '.join(stray)} that is no gap of this report: a typo in a key, a section for something that "
+                  f"is gone (delete it), or a line of your own text that looks like a marker (reword it). REPORT.md was not written.", file=sys.stderr)
+    elif prose is None:
+        print(f"{PROSE} created with {added} sections: write your text there (read report-parts.md for the numbers), then run this again to get REPORT.md")
+    elif not written:
+        print(f"{PROSE} has no text yet" + (f" ({added} new sections were added)" if added else "") + ": write it there, then run this again. REPORT.md was left as it is.")
+    else:
+        open_ = [g.key for g in gaps if not g.optional and not prose.get(g.key)]
+        print(f"REPORT.md written from {PROSE}" + (f"; {added} new sections were added to it" if added else "")
+              + (f"; still to write: {', '.join(open_)}" if open_ else "; every gap has its text"))
+    return 1 if dropped or twice or stray else 0
 
 
 if __name__ == "__main__":
