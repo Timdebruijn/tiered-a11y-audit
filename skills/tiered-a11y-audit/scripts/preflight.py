@@ -99,8 +99,8 @@ EARLIER = {
 
 
 def someone_to_answer() -> str:
-    """Whether a person is on the other end. Claude Code sets CLAUDE_CODE_SESSION_ATTENDED to 0 in a print-mode or
-    scripted session and to 1 in an interactive one; anything else means this script cannot tell."""
+    """Whether a person is on the other end. Claude Code sets CLAUDE_CODE_SESSION_ATTENDED to 1 in an interactive session
+    and to 0 in print mode (measured on 2.1.319; the variable is not documented). Anything else: this script cannot tell."""
     return {"1": "yes", "0": "no"}.get(os.environ.get("CLAUDE_CODE_SESSION_ATTENDED", ""), "unknown")
 
 
