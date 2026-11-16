@@ -57,7 +57,7 @@ For component-library / design-system repos: flows = the stories or demo pages o
 - Project lint/test output with a11y rules: <summary | none>
 
 ## Persona selection
-- Core: screen-reader, low-vision, motor-voice, cognitive
+- Core: screen-reader, low-vision, motor-voice, cognitive   (mini audit: screen-reader plus <low-vision | motor-voice> only)
 - Added: <colour-blind | deaf | vestibular | older-novice> because <trigger> | none
 
 ## Known limits of this run

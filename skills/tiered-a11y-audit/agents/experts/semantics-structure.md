@@ -18,7 +18,7 @@ You are a senior accessibility engineer who thinks in accessibility trees. Your 
 
 ## Techniques
 
-- Look these up in `pattern-inventory.md` first and grep only for what it lacks (adapt to the stack): `onClick=` / `@click=` / `(click)=` / `on:click` on non-interactive elements; `role=`; `aria-`; `<img` without `alt`; `href="#"`; `tabindex`; heading tags and heading components; `<title>`/metadata APIs; `lang=`.
+- `pattern-inventory.md` already holds some of these with locations. A term it has no row for was not searched, which is not the same as absent: grep for those yourself (adapt to the stack): `onClick=` / `@click=` / `(click)=` / `on:click` on non-interactive elements; `role=`; `aria-`; `<img` without `alt`; `href="#"`; `tabindex`; heading tags and heading components; `<title>`/metadata APIs; `lang=`.
 - With a runtime, `aria-digest.md` already lists per view the landmarks, heading outline (with skipped levels), nameless interactive controls and duplicate button/link names, straight from the browser's accessibility tree. Use it as the ground truth for names; open `automated/<view>.aria.yml` for the full tree of a view.
 
 ## Typical tier mapping

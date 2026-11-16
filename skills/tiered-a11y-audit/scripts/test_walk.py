@@ -80,6 +80,16 @@ def test_dangling_symlink_survives():
         assert "#9a9a9a" in run("extract_colors.py", root)
 
 
+def test_forms_and_controls_are_counted_for_the_audit_size():
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        (root / "index.html").write_text('<form><label for="q">Search</label><input id="q" type="search"><input type="hidden" name="t">'
+                                         '<select id="s"></select><input type="submit"></form>')
+        out = run("scan_patterns.py", root)
+        assert "| Forms (for the audit size: one search box is not a form flow) | 1 |" in out, out[:900]
+        assert "| Form controls, labelled or not (for the audit size) | 2 |" in out, "hidden and submit inputs are not controls to fill in"
+
+
 if __name__ == "__main__":
     for name, fn in sorted(globals().items()):
         if name.startswith("test_"):

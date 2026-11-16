@@ -1,6 +1,6 @@
 ---
 name: tiered-a11y-audit
-description: Accessibility audit of a frontend repository, or a focused accessibility review of one component, page, form, modal or pull request. For React, Next.js, Vue, Nuxt, Angular, Svelte, Astro, web components, server-rendered templates (Django, Rails, Laravel, Hugo, Blazor…), React Native, Flutter, and UIs embedded as strings in source code. A full audit gives a three-tier report (1. invisible fixes you can ship today, 2. small non-shocking visual tweaks, 3. everything needed for a "10/10") from parallel expert subagents and persona subagents simulating people who rely on assistive tech; a focused review gives a short three-tier answer. Use whenever the user asks about accessibility, toegankelijkheid, a11y, WCAG, EN 301 549, European Accessibility Act, a toegankelijkheidsrapport or -verklaring, screen reader support, contrast, keyboard navigation, or how inclusive or usable something is — also "check my site for a11y", "hoe toegankelijk is dit", "is dit formulier toegankelijk", "review this PR for a11y".
+description: Accessibility audit of a frontend repository, or a focused accessibility review of one component, page, form, modal or pull request. For React, Next.js, Vue, Nuxt, Angular, Svelte, Astro, web components, server-rendered templates (Django, Rails, Laravel, Hugo, Blazor), React Native, Flutter, and UIs embedded as strings in firmware or source code. A full audit gives a three-tier report (1. invisible fixes you can ship today, 2. small non-shocking visual tweaks, 3. everything needed for a "10/10") from parallel expert subagents and persona subagents that simulate assistive-tech users; a focused review gives a short three-tier answer. Use whenever the user asks about accessibility, toegankelijkheid, a11y, WCAG, EN 301 549, European Accessibility Act, a toegankelijkheidsrapport or -verklaring, screen reader support, contrast, keyboard navigation, or how inclusive or usable something is, also for "check my site for a11y", "hoe toegankelijk is dit", "is dit formulier toegankelijk", "review this PR for a11y".
 ---
 
 # Accessibility audit — three-tier report
@@ -136,7 +136,7 @@ It creates `.a11y-audit/`, writes `stack-detect.md` and appends the ignore lines
    python3 "SKILL_DIR"/scripts/scan_patterns.py <repo> > <repo>/.a11y-audit/pattern-inventory.md
    python3 "SKILL_DIR"/scripts/extract_colors.py <repo> > <repo>/.a11y-audit/colour-pairs.md
    ```
-   The inventory's summary table settles the audit size: a mini candidate that has forms beyond a search box, or more than two interactive widgets, becomes lean. If that changes what you told the user in Phase 1, say so in one line before going on. Its per-file table of headings, titles and languages and its hits in shared components are also where steps 4 and 5 start.
+   The inventory's summary table settles the audit size. Read four rows: forms, form controls, modal-like classes, and key handlers together with click handlers on non-interactive elements. A mini candidate with a form beyond one search box, or with more than two interactive widgets, becomes lean. If that changes what you told the user in Phase 1, say so in one line before going on. The per-file table of headings, titles and languages, and the locations listed under each pattern, are also where steps 4 and 5 start.
 2. Read the detected stacks' sections of `references/framework-playbooks.md` — nothing else.
 3. Establish what the team may edit: `CLAUDE.md`, contribution docs, design docs, `.gitmodules`, vendor and theme folders. Write the writable directories, the off-limits ones and any policy ("never copy theme templates") into the stack profile — it decides `fix.ownership` for every finding. If the repo documents its own accessibility status (a "0 violations" note, a contrast table, a statement), treat it as a claim to re-measure and report the delta; the owner of such a gate needs to know whether it exists.
 4. Locate the leverage points with paths: design tokens/theme and global CSS (focus styles, motion, forced colours); app shell / root layout (`<html lang>`, `<title>`, landmarks, skip link); router or view-switching code; shared components (Button, Link, Icon, Input/Field, Modal, Menu, Tabs, Toast, Table); forms layer (library, validation, error rendering); any announcer/live region; tests, lint, CI.
@@ -158,7 +158,7 @@ It creates `.a11y-audit/`, writes `stack-detect.md` and appends the ignore lines
    ```
    Skim its nameless-controls column next to the inventory's summary table and the failing colour pairs from Phase 2. Together they are the stack profile's baseline headline.
 4. Complete `.a11y-audit/stack-profile.md`, started in Phase 2: mode, runtime (URL, how started), scratch dir, browser tooling available to agents, stack, leverage points, key flows, persona selection, automated-baseline headline, known limits. It is the single brief every subagent reads, so keep it tight, factual and full of paths.
-   The persona selection is decided here, so that Phase 5 only reads it. Full and lean: the four core personas, the others on their trigger. Mini: the screen reader persona plus one (low vision for content sites, motor and voice for tools).
+   The persona selection is decided here, so that Phase 5 only reads it. Full and lean: the four core personas, the others on their trigger. Mini: the screen reader persona plus one (low vision for content sites, motor and voice for tools), so in a mini audit replace the template's core line with those two.
 
    | Persona file | Run when |
    |---|---|
@@ -174,7 +174,7 @@ It creates `.a11y-audit/`, writes `stack-detect.md` and appends the ignore lines
    ```
    python3 "SKILL_DIR"/scripts/build_briefs.py "SKILL_DIR" <repo>/.a11y-audit --playbook <sections> [--lean | --mini]
    ```
-   Each expert brief ends with the start of that agent's findings file: its name, its lenses and every criterion it owns, each still to be given a status. Build the briefs again whenever the stack profile changes, because they carry a copy of it.
+   Each lens brief ends with the start of that agent's findings file: its name, its lenses and every criterion it owns, each still to be given a status. The framework-maximizer owns no criteria and gets none. Build the briefs again whenever the stack profile changes, because they carry a copy of it.
 6. Run the phase check for phase 3 before spawning anyone.
 
 ## Phase 4 — Experts, merge, dedupe, verify
@@ -212,7 +212,7 @@ Every path the agent needs beyond those two is in the stack profile (skill dir, 
 
 Subagents may run on a smaller/faster model if the tool allows choosing one; your own verification is where the strongest model matters.
 
-Spawning is the rule, not an option. Look at your own tool list: if it holds a Task or Agent tool, the lenses and later the personas run as subagents, also when the site is small and doing them yourself looks quicker. A small site is what mini mode is for. One context reading six lenses shares one blind spot, and the personas are only a second opinion if they did not write the first. Only a session without such a tool (plain chat) runs each lens itself, one after another, writing the same files; say so in the first line of your reply and in the method section.
+In a full, lean or mini audit, spawning is the rule, not an option. Look at your own tool list: if it holds a Task or Agent tool, the lenses and later the personas run as subagents, also when the site is small and doing them yourself looks quicker. A small site is what mini mode is for; only a focused review, which has no Phase 4, applies the lenses inline. One context reading six lenses shares one blind spot, and the personas are only a second opinion if they did not write the first. Only a session without such a tool (plain chat) runs each lens itself, one after another, writing the same files; say so in the first line of your reply and in the method section.
 
 Tell the user in one line that the experts have started and roughly how long it takes; nothing more until they finish.
 
@@ -230,7 +230,7 @@ It writes `_merged.json`, `_merged.md` (one line per finding plus root-cause clu
 
 Spawn, **in one message**: the personas and `agents/experts/framework-maximizer.md`. They read the same deduplicated `_merged.md` and don't depend on each other.
 
-- Personas (protocol: `agents/personas/_protocol.md`; same prompt template, persona file instead of lens file, output `.a11y-audit/personas/<persona>.md`): they walk the key flows **first** — at runtime when there is one, that is not optional — and read `_merged.md` only afterwards to reconcile (`confirmed` = seen in their own walk, `cites`, `disputed`). Which personas run is in the stack profile, decided in Phase 3.
+- Personas (protocol: `agents/personas/_protocol.md`; same prompt template, persona file instead of lens file, output `.a11y-audit/personas/<persona>.md`): they walk the key flows **first** — at runtime when there is one, that is not optional — and read `_merged.md` only afterwards to reconcile (`confirmed` = seen in their own walk, `cites`, `disputed`). Which personas run is in the stack profile, decided in Phase 3: four or more in a full or lean audit, two in a mini audit.
 
 - Framework-maximizer: attaches leverage points to existing findings (which token, base component, hook or config fixes several at once) and files new findings only for tooling, CI, suppressions and unused platform features.
 
@@ -238,7 +238,7 @@ One progress line when they start, none in between. When all are done, run the m
 
 ## Phase 6 — Synthesis and report
 
-1. **Final verification**: persona-new findings and every *serious* finding that is cheap to reproduce at runtime (a click and a look — that is where bugs that hurt everyone surface). Keep the severity floors unless a persona's trace doesn't hold up. Resolve the conflicts listed in `coverage.md`.
+1. **Final verification**: persona-new findings and every *serious* finding that is cheap to reproduce at runtime (a click and a look — that is where bugs that hurt everyone surface). Keep the severity floors unless a persona's trace doesn't hold up. Resolve the conflicts listed in `coverage.md`, and decide each persona observation it lists: where the persona is right about a criterion its owner passed, change the status in the owner's findings file and merge again; otherwise leave it as the advisory note it is.
 2. **Tiers**: the script derived them from `visual_impact`; check them against `references/tiering.md` and overrule only with a stated reason. A finding that still needs splitting into a tier-1 and a tier-2 part is split in its findings file and merged again, never in the report.
 3. **Colours**: the visual lens should already have run `scripts/contrast.py` on every contrast finding; fill any gap (`fix` keeps the hue and reports ΔE) so every tier-2 colour change has before/after values and a ratio.
 4. **Re-audit only**: run the merge script with `--previous <repo>/.a11y-audit/previous` to get `delta.md` (resolved / still open / regressed / new by fingerprint); lead the summary with the delta and the score change.

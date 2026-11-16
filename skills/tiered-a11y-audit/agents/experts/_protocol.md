@@ -55,4 +55,4 @@ If you find something that is broken for every user (a confirmation that is wipe
 
 ## Output
 
-Write valid JSON per `references/finding-schema.md` to the path you were given. Start from the JSON at the end of your briefing: it names your file and lists every criterion you own, each waiting for a status. Copy every snippet from the file you cite instead of retyping it, because a script looks it up there. Then reply with at most 8 lines: counts per severity, the top 3 issues by impact, and any blocker you found.
+Write valid JSON per `references/finding-schema.md` to the path you were given. If your briefing ends with the start of your findings file, begin from that JSON: it names your file and lists every criterion you own, each waiting for a status (the framework-maximizer owns none and has no such block). Copy every snippet from the file you cite instead of retyping it, because a script looks it up there. Then reply with at most 8 lines: counts per severity, the top 3 issues by impact, and any blocker you found.
