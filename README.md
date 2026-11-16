@@ -1,6 +1,6 @@
 # tiered-a11y-audit
 
-An accessibility audit skill for [Claude Code](https://docs.claude.com/en/docs/claude-code). You point it at a repository that has a user interface, it reads the code and, where possible, the running app, and it writes you a report that is sorted by how disruptive each fix is rather than by rule number.
+An accessibility audit skill for [Claude Code](https://code.claude.com/docs/en/overview). You point it at a repository that has a user interface, it reads the code and, where possible, the running app, and it writes you a report that is sorted by how disruptive each fix is rather than by rule number.
 
 This file is written to be read aloud. Sections have a fixed shape: one paragraph, then one list or one table, then any detail. Tables have at most four columns and never hold a fact that is not also in the text. Abbreviations are spelled out the first time.
 
@@ -21,12 +21,12 @@ Severity is tracked separately from tier, and the two are independent. A blocker
 A run has seven phases. The next list names them in order.
 
 1. **Orient.** One read-only command checks the git and ignore status, looks for an earlier audit and for the tools a runtime scan needs, and runs a detector over the repository: frameworks, interface libraries, styling, routing, translations, existing accessibility tooling, suppressed lint rules, interfaces embedded in source strings, vendored themes and build output. From the size of what it finds, it picks how large the audit should be.
-2. **Ask once.** One message, at most five numbered questions, each with its default, so that answering "ok" answers all of them. The questions cover the ignore file, the runtime, permission to install, whether the running app may be changed, and which flows matter.
+2. **Ask once.** One message, at most five numbered questions, each with its default, so that answering "ok" answers all of them. The questions cover the ignore file, the runtime, permission to install, whether the running app may be changed, and which flows matter. In a run with nobody to answer, such as a pipeline, it does not wait: it takes for each question the option that needs no permission, leaves the ignore file alone, and says so in its reply.
 3. **Pre-compute with scripts.** Every accessibility grep, the colour tokens and the failing contrast pairs. With a runtime it also runs axe-core in both colour schemes, walks the page with the Tab key, checks reflow at 320 pixels, text spacing, reduced motion and target sizes, and captures the accessibility tree per view.
 4. **Run six expert lenses in parallel.** Semantics and structure, keyboard and focus, visual perception, forms and input, dynamic content, content and media. Each lens owns a fixed set of the 55 level A and level AA criteria of version 2.2 of the Web Content Accessibility Guidelines, and reports pass, fail, not tested or not applicable for every single one it owns. That is what makes the coverage matrix real instead of guessed.
 5. **Merge, deduplicate and verify.** A script merges the findings, derives the tier from the visual impact, clusters findings that share a root cause, and builds the coverage matrix. The orchestrator then decides which findings are duplicates, and opens the code or the page for every blocker before anything is built on top of it. From the pre-computation onward, a script checks at the end of each phase that its output is complete and current before the next phase starts.
 6. **Run the personas.** Subagents simulate people who depend on assistive technology: a screen-reader user, a low-vision user at 400 percent zoom, a voice-control and keyboard user, a user with dyslexia and attention deficit, a colour-blind user, a Deaf user, a user with a vestibular disorder, and an older novice. Each one walks the key flows first and reads the expert findings only afterwards, so that they are a second opinion rather than an echo. Each step of a walk carries its evidence, and a flow a persona could not finish raises the severity of the findings that caused it.
-7. **Write the report.** In the language you are speaking, whichever that is. The agents write their findings in that language from the start, so the report is assembled by a script from their findings and the orchestrator's prose, and not translated or edited by hand; English and Dutch labels ship with the skill and the labels of any other language are translated once, with a summary a screen-reader user can stop reading after, a table per tier, a fix per finding written in the idiom of your own stack, the personas in their own words, structural advice, and appendices. A script then checks the finished report: nothing left unwritten, no finding dropped, and the read-aloud rules kept. A second audit of the same repository compares against the first on stable fingerprints and reports what is resolved, still open, regressed or new.
+7. **Write the report.** In the language you are speaking, whichever that is. The agents write their findings in that language from the start, so nothing is translated afterwards. A script assembles the report from those findings and from the orchestrator's own prose, and nobody edits it by hand. It holds a summary a screen-reader user can stop reading after, a table per tier, a fix per finding written in the idiom of your own stack, the personas in their own words, structural advice, and appendices. The fixed words of the report ship in English and Dutch, and for any other language they are translated once. A second script then checks the finished report: nothing left unwritten, no finding dropped, and the read-aloud rules kept. A second audit of the same repository compares against the first on stable fingerprints and reports what is resolved, still open, regressed or new.
 
 Alongside the personas, a framework-maximizer looks for the single token, base component or hook that would fix several findings at once.
 
@@ -56,15 +56,15 @@ As an alternative, load the whole repository as a plugin for one session. This i
 claude --plugin-dir ~/src/tiered-a11y-audit
 ```
 
-Afterwards, in any repository, ask in your own words: "maak een toegankelijkheidsrapport van deze site", or "how accessible is this app?". The skill asks its questions, runs for 20 to 45 minutes depending on the mode, and leaves everything in a folder called `.a11y-audit`. It asks permission to add that folder to your ignore file before it writes anything.
+Afterwards, in any repository, ask in your own words: "maak een toegankelijkheidsrapport van deze site", or "how accessible is this app?". The skill asks its questions, runs from under ten minutes for a small site read from its code to 45 minutes for a full audit with a running app, and leaves everything in a folder called `.a11y-audit`. It asks permission to add that folder to your ignore file before it writes anything.
 
-You need Python 3 for the scripts, which use the standard library only. For the runtime checks you also need Node, and permission to install `playwright` and `@axe-core/playwright` into a throwaway directory. An already installed Chrome or Edge avoids the browser download.
+You need Python 3.9 or newer for the scripts, which use the standard library only, and git if you want the skill to check your ignore file. For the runtime checks you also need Node, and permission to install `playwright` and `@axe-core/playwright` into a throwaway directory. An already installed Chrome or Edge avoids the browser download.
 
 ## What it costs
 
-Two sets of numbers follow: the estimates from real runs on real repositories, and the measured numbers from the evaluation cases. They are listed separately because the measured run did something the estimates do not describe.
+Two sets of numbers follow: the estimates from real runs on real repositories, and the measured numbers from the evaluation cases. They are listed separately because they come from different repositories and count tokens differently, as the first warning below explains.
 
-From real runs, a full audit is 13 to 15 subagents and 1 to 1.5 million subagent tokens. A lean audit is about 10 subagents and 0.5 to 0.7 million tokens. A mini audit is about 5 subagents and 0.3 million. All three take 20 to 45 minutes of wall-clock time, because the orchestrator's own verification takes about as long as the agents do.
+From real runs with the version before 1.1.0, a full audit is 13 to 15 subagents and 1 to 1.5 million subagent tokens. A lean audit is about 10 subagents and 0.5 to 0.7 million tokens. A mini audit is about 5 subagents and 0.3 million. All three take 20 to 45 minutes of wall-clock time, because the orchestrator's own verification takes about as long as the agents do.
 
 The next table lists the four measured evaluation cases, with the tokens, the cost and the wall-clock time of each. In words: the lean audit of the fixture site took 5.1 million tokens, 4 dollars 28 and about 10 minutes; the mini audit of the themed site took 2.2 million tokens, 2 dollars 9 and about 6 minutes; the focused review took 170 thousand tokens, 36 cents and a little over a minute; the case that declines took 90 thousand tokens, 25 cents and 34 seconds. Judging adds 3 to 25 cents per case on top.
 
@@ -139,13 +139,15 @@ Four cases live in the `evals/` directory, which is where the evaluation runner 
 claude plugin eval . --scaffold --allow-tools Bash Write Edit --no-publish
 ```
 
-The scaffold option runs each case's `place-files.sh`, which writes the fixture site into a temporary directory. Remember that this is six complete audits by default, as explained under costs above; pass one run to halve it, and use the case option to pick a single case. Results land in `evals/results/`, which is ignored by git.
+The scaffold option runs each case's `place-files.sh`, which writes the fixture site into a temporary directory. Remember that this is six complete audits by default, as explained under costs above; ask for one run per arm with `--runs 1` to make it two, and use the case option to pick a single case. Results land in `evals/results/`, which is ignored by git.
 
-To score the detection rate yourself, add the option that keeps the temporary directory. Without it the scaffold directory is deleted, and the merged findings file the grader reads goes with it. The run prints the path it kept, which has to be opened first with `chmod 700` on the directory and its `sealed` subdirectory. Then run:
+To score the detection rate yourself, add `--keep-temp`, the option that keeps the temporary directory. Without it the scaffold directory is deleted, and the merged findings file the grader reads goes with it. The run prints the path it kept, which has to be opened first with `chmod 700` on the directory and its `sealed` subdirectory. Then run:
 
 ```bash
-python3 skills/tiered-a11y-audit/scripts/grade_findings.py <kept>/sealed/home/cwd/.a11y-audit/findings/_merged.json evals/full-audit-fixture-site/ground-truth.json
+python3 skills/tiered-a11y-audit/scripts/grade_findings.py <kept>/sealed/home/cwd/site/.a11y-audit/findings/_merged.json evals/full-audit-fixture-site/ground-truth.json
 ```
+
+The workspace sits in the folder the audit was run on. That is usually `site`; when the audit was started from the folder above it, leave `site` out of the path.
 
 ## Repository layout
 
@@ -155,8 +157,8 @@ The next list gives every directory that matters, with what it holds.
 - `skills/tiered-a11y-audit/SKILL.md` is the workflow itself, and the file Claude Code reads.
 - `skills/tiered-a11y-audit/agents/experts/` holds the six lenses, the framework-maximizer, and the protocol they share.
 - `skills/tiered-a11y-audit/agents/personas/` holds the eight personas and the protocol they share.
-- `skills/tiered-a11y-audit/references/` holds the tiering rules, the finding schema, the criterion ownership table, the framework playbooks, the report template, the tooling notes, and the report labels per language.
-- `skills/tiered-a11y-audit/scripts/` holds the preflight, the detector, the pattern scanner, the colour extractor, the contrast tool, the accessibility-tree digest, the runtime scan, the briefing builder, the phase check, the merge and coverage script, the renderer that writes the draft report, and the linter that checks the finished one.
+- `skills/tiered-a11y-audit/references/` holds the tiering rules, the finding schema, the criterion ownership table, the framework playbooks, the stack profile template, the report template, the tooling notes, and the report labels per language.
+- `skills/tiered-a11y-audit/scripts/` holds the preflight, the detector, the pattern scanner, the colour extractor, the contrast tool, the accessibility-tree digest, the runtime scan, the briefing builder, the phase check, the merge and coverage script, the renderer that writes the draft and assembles the report, the linter that checks it, the exporter, the grader for the evaluation fixture, and eight self-checks that cover most of them.
 - `evals/` holds the four test cases with their fixture sites. It stays at the repository root, because that is where the evaluation runner looks.
 
 ## Contributing
