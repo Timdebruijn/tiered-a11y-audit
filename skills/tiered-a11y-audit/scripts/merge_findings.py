@@ -119,7 +119,8 @@ def tiers_of(f: dict):
 
 class Log(list):
     """What the merge reports back. append() is for what needs a decision from the orchestrator: content was
-    lost, or a claim does not hold. note() is for what the merge settled itself and only wants to be seen."""
+    lost, a claim does not hold, two fields contradict each other, or a value had to be guessed. note() is for
+    what the merge settled itself, from data it could look up or by a fixed conversion, and only wants to be seen."""
 
     def __init__(self):
         super().__init__()
@@ -182,9 +183,11 @@ def coerce_shape(f, agent: str, seq: int, problems: Log):
 
 
 def squash(s: str) -> str:
-    """Whitespace and backslashes dropped, so a snippet quoted from HTML inside a C++ or JS string still
-    matches the escaped source, and one an agent reflowed onto a single line still matches the wrapped original."""
-    return re.sub(r"\s+", "", s.replace("\\", ""))
+    """Backslashes dropped, so a snippet quoted from HTML inside a C++ or JS string still matches the escaped
+    source. Whitespace dropped next to punctuation, so code an agent reflowed onto one line still matches the
+    wrapped original, but kept as one space between two words: class="a b" is not class="ab"."""
+    s = re.sub(r"\s+", " ", s.replace("\\", "")).strip()
+    return re.sub(r"(?<=\W) | (?=\W)", "", s)
 
 
 def verify_claims(f: dict, owners: dict, repo: Path, problems: Log) -> None:
@@ -228,8 +231,9 @@ def verify_claims(f: dict, owners: dict, repo: Path, problems: Log) -> None:
         if isinstance(ev.get("snippet"), str):
             hay = squash(text)
             # an agent may abbreviate with an ellipsis; every part it did quote must be there
-            parts = [squash(part) for part in re.split(r"…|\.\.\.", ev["snippet"])]
-            gone = [part for part in parts if len(part) >= 8 and part not in hay]
+            # (fragments under 8 characters as written say too little to look up)
+            parts = [squash(part) for part in re.split(r"…|\.\.\.", ev["snippet"]) if len(" ".join(part.split())) >= 8]
+            gone = [part for part in parts if part not in hay]
             if gone:
                 problems.append(f"{fid}: snippet not found in {rel}: {gone[0][:60]!r}")
 
@@ -288,7 +292,7 @@ def normalise_persona_finding(raw: dict, persona: str, problems: Log, seq: int =
         if t:
             f["visual_impact"] = {1: "none", 2: "subtle", 3: "significant"}[t]
             f["proposed_tier"] = t
-            problems.note(f"{pid}: no visual_impact; derived from tier {t} — verify")
+            problems.note(f"{pid}: no visual_impact; derived from tier {t}")
         else:
             problems.append(f"{pid}: no visual_impact and no tier")
     f.setdefault("fingerprint", re.sub(r"[^a-z0-9]+", "-", f.get("title", "").lower())[:40] + "@" + norm_file(f))
@@ -426,10 +430,10 @@ def main():
             else:
                 f["tier"] = derived
                 if proposed not in (None, derived):
-                    problems.note(f"{f.get('id')}: proposed_tier {f.get('proposed_tier')} != tier {derived} from visual_impact {vi!r}; using {derived}")
+                    problems.append(f"{f.get('id')}: proposed_tier {f.get('proposed_tier')} != tier {derived} from visual_impact {vi!r}; using {derived}, but one of the two fields is wrong: correct it")
             own = f["fix"].get("ownership")
             if own not in ("project", "override", "upstream", "accepted"):
-                problems.note(f"{f['id']}: fix.ownership missing or invalid ({own!r}); assuming 'project'")
+                problems.append(f"{f['id']}: fix.ownership missing or invalid ({own!r}); 'project' is assumed, which is wrong for vendored code: state it")
                 f["fix"]["ownership"] = "project"
             if not f.get("fingerprint"):
                 problems.note(f"{f['id']}: no fingerprint; generated from title+file")
@@ -675,6 +679,7 @@ def main():
             prev = read_json(prev_path)
             if not isinstance(prev, dict):
                 problems.append(f"previous {prev_path.name} unreadable or not an object; no delta written")
+                print(f"!! {problems[-1]}", file=sys.stderr)
                 prev = None
         if prev_path.exists() and prev is not None:
             prev_fps = {f["fingerprint"].strip().lower(): f for f in prev.get("findings", []) if f.get("fingerprint")}
@@ -699,6 +704,7 @@ def main():
             print(f"delta: resolved {len(resolved)}, still open {len(still_open)}, regressed {len(regressed)}, new {len(new)}")
         else:
             problems.append(f"--previous given but {prev_path} not found")
+            print(f"!! {problems[-1]}", file=sys.stderr)
 
     print(f"{len(all_findings)} raw findings from {len(agents)} agents (+{len(persona_findings)} from personas) → {len(merged)} merged; "
           f"{len(cand)} root-cause clusters; coverage {dict(counts)}; {len(conflicts)} conflicts; {len(problems)} problems to resolve, {len(problems.notes)} settled by the merge")

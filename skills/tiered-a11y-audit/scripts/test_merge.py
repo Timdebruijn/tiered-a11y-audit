@@ -189,6 +189,13 @@ def test_false_claims_are_flagged():
         "snippet that is not in the file": (finding("BAD-004", evidence=[{"file": "src/page.html", "lines": "3",
                                                                           "snippet": "<button disabled>Send</button>"}]),
                                             "snippet not found"),
+        "snippet with two words run together": (finding("BAD-010", evidence=[{"file": "src/page.html", "lines": "2",
+                                                                              "snippet": '<a class="more" href="/news">Leesmeer</a>'}]),
+                                                "snippet not found"),
+        "short invented snippet": (finding("BAD-011", evidence=[{"file": "src/page.html", "lines": "2", "snippet": "x = 1 + 2;"}]),
+                                   "snippet not found"),
+        "tier that contradicts the visual impact": (finding("BAD-012", proposed_tier=3), "one of the two fields is wrong"),
+        "no fix ownership": (finding("BAD-013", fix={"summary": "Use a button."}), "'project' is assumed"),
         "triple-A criterion only": (finding("BAD-005", wcag=[{"sc": "2.4.9", "name": "Link Purpose (Link Only)", "level": "AAA"}]),
                                     "not a WCAG 2.2 level A or AA criterion"),
         "no criterion and no best-practice marker": (finding("BAD-006", wcag=[]), "not marked best_practice_only"),
@@ -214,8 +221,6 @@ def test_what_the_merge_settles_itself_is_a_note_not_a_problem():
         "contrast ratio from memory, still a failure": (finding("FIX-002", colours={"fg": "#9a9a9a", "bg": "#ffffff", "ratio": 3.9,
                                                                                     "required": 4.5}), "measures 2.81"),
         "criterion as a bare string": (finding("FIX-003", wcag=["2.1.1"]), "read as a criterion number"),
-        "fix as plain text": (finding("FIX-004", fix="Use a button."), "kept as fix.summary"),
-        "tier that contradicts the visual impact": (finding("FIX-005", proposed_tier=3), "using 1"),
         "no fingerprint": (finding("FIX-006", fingerprint=""), "generated from title+file"),
     }
     for label, (f, expect) in cases.items():
@@ -229,6 +234,15 @@ def test_what_the_merge_settles_itself_is_a_note_not_a_problem():
             text = (ws / "findings" / "_merged.md").read_text()
             assert "## Settled by the merge (" in text and "## Problems to resolve" not in text, label
         print("   noted:", label)
+
+
+def test_a_fix_given_as_text_is_kept_but_its_ownership_is_asked_for():
+    with tempfile.TemporaryDirectory() as d:
+        ws = claims_workspace(d, [finding("FIX-004", fix="Use a button.")])
+        merge(ws)
+        merged = json.loads((ws / "findings" / "_merged.json").read_text())
+        assert merged["findings"][0]["fix"]["summary"] == "Use a button." and any("kept as fix.summary" in n for n in merged["notes"])
+        assert len(merged["problems"]) == 1 and "'project' is assumed" in merged["problems"][0], merged["problems"]
 
 
 def test_level_and_ratio_are_corrected_in_the_output():
@@ -254,6 +268,16 @@ def test_a_personas_words_are_not_checked_as_a_quote_from_the_file():
         assert len(per) == 1, f"the persona finding did not arrive: {r.stdout}{r.stderr}"
         assert per[0]["evidence"][0] == {"file": "src/page.html", "lines": "3", "observation": "Tab went past the menu."}, per[0]["evidence"]
         assert not [p for p in merged["problems"] if "snippet" in p], merged["problems"]
+        assert any("'location' instead of evidence" in n for n in merged["notes"]), merged["notes"]
+        assert not [p for p in merged["problems"] if "location" in p], merged["problems"]
+
+
+def test_a_problem_found_after_the_files_are_written_is_still_named():
+    with tempfile.TemporaryDirectory() as d:
+        ws = claims_workspace(d, [finding("OK-001")])
+        r = subprocess.run([sys.executable, str(HERE / "merge_findings.py"), str(ws), "--ownership", str(OWNERSHIP),
+                            "--previous", str(Path(d) / "nowhere")], capture_output=True, text=True)
+        assert "1 problems to resolve" in r.stdout and "--previous given but" in r.stderr, r.stdout + r.stderr
 
 
 def test_a_coverage_reason_is_kept_under_either_key():

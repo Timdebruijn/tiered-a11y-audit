@@ -19,7 +19,8 @@ aside before the run starts is what keeps the answers honest.
 
 A gate only looks at files: whether a finding is true is still for the orchestrator to verify. It does not
 count the "Problems to resolve" of the merge either. That list holds only what needs a decision, but on
-earlier audits a third of it was snippets an agent had retyped; blocking on it waits for a measured run.
+two earlier audits 21 and 25 of its entries were snippets an agent had retyped; blocking on it waits for
+a run in which agents were told to copy.
 Standard library only.
 """
 from __future__ import annotations
