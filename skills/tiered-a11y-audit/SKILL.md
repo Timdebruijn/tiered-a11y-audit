@@ -64,7 +64,7 @@ Create `.a11y-audit/` in the repo root. It holds screenshots (easily several MB)
 
 ```
 .a11y-audit/
-├── stack-detect.md         # detector output (Phase 0)
+├── stack-detect.md         # detector output, written by preflight.py --start (Phase 1)
 ├── stack-profile.md        # shared brief for all agents (end of Phase 3)
 ├── automated/              # scan output, screenshots, aria trees (Phase 3)
 ├── pattern-inventory.md    # every a11y grep, done once by script (Phase 3)
@@ -79,7 +79,7 @@ Create `.a11y-audit/` in the repo root. It holds screenshots (easily several MB)
 ├── findings/_dedupe.json   # your merge decisions: {"CANONICAL": ["DUP", ...]} (Phase 4)
 ├── coverage.md             # the 55-criterion matrix with conflicts (Phases 4–6)
 ├── personas/<persona>.md   # one file per persona agent (Phase 5)
-├── previous/               # re-audit: prior findings/, coverage.md and REPORT.md, moved here first
+├── previous/               # re-audit: the whole earlier audit, moved here by preflight.py --start
 ├── delta.md                # re-audit: resolved / open / new / regressed (Phase 6)
 └── REPORT.md               # the deliverable (Phase 6)
 ```
@@ -90,14 +90,12 @@ Create `.a11y-audit/` in the repo root. It holds screenshots (easily several MB)
 
 Everything here is cheap and needs no input, so do it before asking anything.
 
-1. If `.a11y-audit/findings/` exists, move `findings/`, `coverage.md` and `REPORT.md` into `.a11y-audit/previous/` — this is a re-audit.
-2. Check whether the repo is a git repository and whether `.gitignore` already covers `.a11y-audit/` (also look for a global ignore via `git check-ignore -v .a11y-audit/REPORT.md`). Note the answer for Phase 1; don't write anything yet.
-3. Run the detector; nothing is written into the repo yet, so send its output to a temp file and copy it to `.a11y-audit/stack-detect.md` once the workspace exists (after Phase 1):
+1. Run the preflight. It reads only; nothing is written anywhere yet:
    ```
-   python3 "SKILL_DIR"/scripts/detect_stack.py <repo-root> > /tmp/stack-detect.md
+   python3 "SKILL_DIR"/scripts/preflight.py <repo-root>
    ```
-   It reports frameworks, UI/chart/animation libraries, styling, routing (or its absence), i18n, a11y tooling, suppressed a11y lint rules, UIs embedded in source strings, a CSP, and infra templates it ignored.
-4. From that output decide: no UI at all → stop and ask what to audit; the "Scope" line gives project-owned UI files (vendored themes and build output excluded): ≤ 10 → mini candidate (confirm after `scan_patterns.py` in Phase 3 shows few interactive widgets), ≤ 25 → lean, otherwise full. Packages listed under "Found only in vendored code" are not the project's stack; read the playbook for the generator or framework the project actually uses. Note the package scripts / compose files / SSG commands that could start a dev server, and whether a browser tool is available in this session (Playwright via a scratch dir, a Playwright or Chrome MCP, or nothing).
+   Its first lines answer what Phase 1 needs: whether this is a git repository and whether `.a11y-audit/` is already ignored (then skip question 1), whether an earlier audit is present (then this is a re-audit), the number of project-owned UI files and the audit size that suggests, the run scripts in `package.json`, whether node and an installed browser are available, and a scratch directory outside the repository to offer. Below that comes the detector's output: frameworks, UI/chart/animation libraries, styling, routing (or its absence), i18n, a11y tooling, suppressed a11y lint rules, UIs embedded in source strings, a CSP, and infra templates it ignored.
+2. From that output decide: no UI at all → stop and ask what to audit; the "Scope" line gives project-owned UI files (vendored themes and build output excluded): ≤ 10 → mini candidate (confirm after `scan_patterns.py` in Phase 3 shows few interactive widgets), ≤ 25 → lean, otherwise full. Packages listed under "Found only in vendored code" are not the project's stack; read the playbook for the generator or framework the project actually uses. Note the package scripts / compose files / SSG commands that could start a dev server, and whether a browser tool is available in this session (Playwright via a scratch dir, a Playwright or Chrome MCP, or nothing).
 
 ## Phase 1 — One message to the user
 
@@ -107,12 +105,18 @@ One message, at most five numbered questions, one line each, each with its defau
 I found a React + Vite app with 18 UI files; a lean audit fits (about 7 agents, 15–20 minutes). Questions, defaults in brackets, "ok" accepts all:
 1. Add .a11y-audit/ to .gitignore? It holds screenshots and code snippets. [yes, ignore all; or: keep REPORT.md trackable]
 2. Runtime: start `npm run dev` myself? [yes; or give me a URL; or static only]
-3. Install Playwright + axe in /tmp/a11y-scan (outside the repo, ~150 MB browser unless Chrome is installed)? [yes]
+3. Install Playwright + axe in a scratch folder outside the repo (uses your installed Chrome)? [yes]
 4. Treat the running app as read-only? [yes; or name a disposable instance and allowed actions]
 5. Key flows: overview, graphs, targets editor, alerts, access. [ok]
 ```
 
-The gitignore line is the one edit this skill makes to a repo, only with this permission (options: `.a11y-audit/` for everything, or `.a11y-audit/*` plus `!.a11y-audit/REPORT.md` and `!.a11y-audit/coverage.md` to keep the report trackable). Mention cost in the first line, not as a paragraph. Only mention legal context (EN 301 549 / EAA / public sector) if the user or the repo brings it up. Wait for the answer, then apply the gitignore choice and create `.a11y-audit/`.
+The gitignore line is the one edit this skill makes to a repo, only with this permission (options: `.a11y-audit/` for everything, or `.a11y-audit/*` plus `!.a11y-audit/REPORT.md` and `!.a11y-audit/coverage.md` to keep the report trackable). Mention cost in the first line, not as a paragraph. Only mention legal context (EN 301 549 / EAA / public sector) if the user or the repo brings it up. In question 3 name what the preflight found: the installed browser, or that Playwright downloads one of about 150 MB. Wait for the answer, then set the workspace up in one command, with `--ignore` only if the user agreed to it (`all`, or `report` to keep the report trackable):
+
+```
+python3 "SKILL_DIR"/scripts/preflight.py <repo-root> --start [--ignore all|report]
+```
+
+It creates `.a11y-audit/`, writes `stack-detect.md`, adds the ignore lines once, and in a re-audit moves the whole earlier audit into `.a11y-audit/previous/` so that none of its files is mistaken for this run's output. Nothing is deleted: an older `previous/` is kept as `previous-<timestamp>/`, and a translated labels file stays where it is.
 
 ## Phase 2 — Recon and runtime
 
@@ -121,7 +125,7 @@ The gitignore line is the one edit this skill makes to a repo, only with this pe
 3. Locate the leverage points with paths: design tokens/theme and global CSS (focus styles, motion, forced colours); app shell / root layout (`<html lang>`, `<title>`, landmarks, skip link); router or view-switching code; shared components (Button, Link, Icon, Input/Field, Modal, Menu, Tabs, Toast, Table); forms layer (library, validation, error rendering); any announcer/live region; tests, lint, CI.
 4. Pick the key flows (3–7): home + primary navigation, the primary task, a form or authentication flow, a content-heavy view, a widget-heavy view. Map each to routes/views/components. For a component library without pages, the flows are the stories/demo pages of the 5–8 most-used components.
 5. If agreed, start the dev server as a background process from the repo root, wait until the URL answers (fetch it), and record the command, URL and PID. If it fails, fall back to static-only and say so later in the method section.
-6. Create the scratch directory (the session scratchpad if the harness has one, else e.g. `/tmp/a11y-scan`) and, if agreed, install `playwright` and `@axe-core/playwright` there (`references/tooling.md`). Copy `axe_scan.mjs` into it: Node resolves ESM imports from the script's own directory, so a script that stays in the skill folder cannot find the scratch `node_modules`. This directory is the one place for every helper script of the whole audit.
+6. Create the scratch directory (the session scratchpad if the harness has one, else the one the preflight offered) and, if agreed, install `playwright` and `@axe-core/playwright` there (`references/tooling.md`). Copy `axe_scan.mjs` into it: Node resolves ESM imports from the script's own directory, so a script that stays in the skill folder cannot find the scratch `node_modules`. This directory is the one place for every helper script of the whole audit.
 
 ## Phase 3 — Automated baseline, then the shared brief
 
@@ -246,6 +250,7 @@ Exports, on request or when the context calls for them (a team that works from t
 - `references/report-template.md` — the exact report structure.
 - `scripts/detect_stack.py` — stack and tooling detector (also finds UIs embedded in source-code string literals).
 - `scripts/scan_patterns.py` — pattern inventory: every a11y grep over templates, styles and UI scripts, with locations.
+- `scripts/preflight.py` — Phase 0 in one read-only command (git and ignore status, earlier audit, audit size, tools, detector output); with `--start` the workspace set-up, re-audit rotation and ignore lines.
 - `scripts/extract_colors.py` — colour tokens per scheme and failing foreground/background pairs.
 - `scripts/aria_digest.py` — per-view digest of the accessibility trees: landmarks, headings, nameless controls, duplicate names.
 - `scripts/build_briefs.py` — one briefing file per subagent.

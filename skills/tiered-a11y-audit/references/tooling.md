@@ -11,10 +11,19 @@ Automated tools find only a minority of WCAG issues (missing names, contrast of 
 
 Never add dependencies to the project's `package.json` without asking. For the runtime scan, use a throwaway directory and ask before installing. Be precise about what the install is: two npm packages, and — unless an installed Google Chrome or Edge is used via `--channel` — a ~150 MB Playwright Chromium download that must match the Playwright version. Prefer the system browser; the script retries with `channel: 'chrome'` on its own when Playwright's Chromium is missing.
 
+## Preflight and workspace set-up (Phases 0 and 1)
+
+```bash
+python3 "SKILL_DIR"/scripts/preflight.py <repo-root>                              # reads only
+python3 "SKILL_DIR"/scripts/preflight.py <repo-root> --start [--ignore all|report]
+```
+
+The first form writes nothing and prints: git repository or not, whether `.a11y-audit/` is ignored and by which rule (it asks git, so a global ignore file counts), an earlier audit, the number of project-owned UI files with the audit size it suggests, run scripts, node, an installed browser, a scratch directory under the system's temp folder, and the detector's output. The second form creates the workspace, writes `stack-detect.md`, and in a re-audit moves everything of the earlier audit into `previous/` except `report-labels.<code>.json`; an existing `previous/` becomes `previous-<timestamp>/`. `--ignore all` adds `.a11y-audit/` to `.gitignore`, `--ignore report` adds `.a11y-audit/*` with exceptions for `REPORT.md` and `coverage.md`; lines already present are not added again, and `--ignore` without `--start` is refused. The browser check knows a fixed list of names and the macOS application folder, so a browser installed elsewhere reads as not found. `python3 scripts/test_preflight.py` checks all of this.
+
 ## Running `scripts/axe_scan.mjs`
 
 ```bash
-# A throwaway directory — the session scratchpad if the harness has one, else e.g. /tmp/a11y-scan.
+# A throwaway directory — the session scratchpad if the harness has one, else the one preflight.py offered.
 # It is the scratch dir for every helper script of this audit; name it in the stack profile.
 mkdir -p "$SCRATCH" && cd "$SCRATCH"
 npm init -y >/dev/null
