@@ -12,8 +12,8 @@ Reads findings/_merged.json, findings/<agent>.json, coverage.md and personas/*.m
                     results, appendix B and C), kept for anything that still reads it
   report-ids.json   report ID → source finding (so IDs stay consistent while writing)
 Every value in a finding block comes from _merged.json, so nothing is retyped and nothing can be dropped
-or altered on the way into the report. Finding text stays in the agents' working language (English) and
-the orchestrator translates it in place. The fixed words of the report come from a labels file, so any
+or altered on the way into the report. The agents write their finding text in the report language, so it
+goes in as it is; a contrast written as 4.5:1 is put into words on the way. The fixed words of the report come from a labels file, so any
 language works: en and nl ship with the skill, and for another one the first run writes
 report-labels.<code>.json into the workspace to be translated once (see labels.py).
 Findings are ordered within a tier by severity, then effort (S before L); reorder in the report if
@@ -76,15 +76,24 @@ def persona_rows(pdir: Path, t):
 
 
 
+TO1 = "{r} to 1"        # main() sets it from the labels of the report language
+
+
+def spoken(s: str) -> str:
+    """A contrast written as 4.5:1 put into words, outside code spans. Agents are told to write it in words; this catches the rest."""
+    parts = re.split(r"(`[^`]*`)", s)
+    return "".join(p if p.startswith("`") else re.sub(r"(?<![\w.,:])(\d+(?:[.,]\d+)?):1(?![\w:])", lambda m: TO1.format(r=m.group(1)), p) for p in parts)
+
+
 def one(x, what):
     """Text on one line, or a marked gap when the finding does not have it."""
     s = re.sub(r"\s+", " ", str(x or "")).strip()
-    return s or WRITE.format(f"{what} is missing in the finding")
+    return spoken(s) or WRITE.format(f"{what} is missing in the finding")
 
 
 def cell(x):
     # a pipe would open a fifth column
-    return re.sub(r"\s+", " ", re.sub(r"\s*\|\s*", ", ", str(x if x is not None else ""))).strip()
+    return spoken(re.sub(r"\s+", " ", re.sub(r"\s*\|\s*", ", ", str(x if x is not None else ""))).strip())
 
 
 def where(f, t):
@@ -167,6 +176,8 @@ def main():
     a = ap.parse_args()
     ws = Path(a.workspace)
     t = load_labels(a.lang, ws)
+    global TO1
+    TO1 = t["to1"]
     data = json.loads((ws / "findings" / "_merged.json").read_text(encoding="utf-8"))
     dropped = [f.get("id") for f in data["findings"] if f.get("tier") not in (1, 2, 3)]
     findings = [f for f in data["findings"] if f.get("tier") in (1, 2, 3)]
@@ -247,8 +258,8 @@ def main():
     project = ws.resolve().parent.name
     d = ["<!-- GENERATED DRAFT of the report. Copy it to REPORT.md, then:",
          "     1. write every part marked WRITE and delete the marker;",
-         "     2. translate the finding text (titles, problem, fix, verify) into the report language, keeping IDs, code,",
-         "        selectors, file paths and numbers exactly as they are;",
+         "     2. leave the finding text as it is: the agents wrote it in the report language. A finding in another language",
+         "        is corrected in its findings file and rendered again, not translated here;",
          "     3. do not retype or reorder tables and finding blocks: edit them in place, and keep every report ID;",
          "     4. delete this comment and run lint_report.py on the report until it exits 0.",
          f"     Facts: generated {date.today().isoformat()}; {len(findings)} findings; "
@@ -278,7 +289,7 @@ def main():
     for para in t["howto_p"]:
         d += [para, ""]
     positives = [x for xs in (data.get("positives") or {}).values() for x in xs if isinstance(x, str)]
-    d += [f"## {t['works']}", "", WRITE.format("keep the three to eight most specific of these, translated"), ""]
+    d += [f"## {t['works']}", "", WRITE.format("keep the three to eight most specific of these"), ""]
     d += [f"- {cell(x)}" for x in positives] or [t["nothing"]]
     d.append("")
 

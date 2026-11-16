@@ -6,7 +6,7 @@ The repository is read-only: never edit project files and never run git commands
 
 The runtime is read-only too, by default: navigate, open menus/dialogs/tabs, type into fields, but never submit a form, never create/delete/modify anything, never trigger an action with side effects. Mutating flows are audited from code unless your prompt explicitly says the instance is disposable and names which actions are allowed.
 
-Work in English (findings, notes, persona narratives); the orchestrator writes the report in the user's language. Mixed-language findings cost the orchestrator time.
+Write your prose in the report language named in the stack profile: titles, descriptions, fix summaries, side effects, verification steps, tier rationales, positives and notes. The report takes those words as they are; nobody translates them afterwards. Everything a script reads stays exactly as the schema spells it: IDs, fingerprints, criterion numbers and names, and every value the schema enumerates (severity, visual_impact, status, ownership, effort, confidence, affected_users, scope, method), plus code, selectors and paths. That prose is read aloud from the report, so write it for the ear: no slash between two words (write "or" or "and"), a contrast as "4.5 to 1" in that language and not "4.5:1", no arrows and no emoji, and every path, selector or piece of code in backticks.
 
 ## How to work
 

@@ -17,7 +17,7 @@ Write `.a11y-audit/stack-profile.md` in this shape. It is the single shared brie
 - Scratch dir for helper scripts (has node_modules): <path> | none
 - Previous audit: .a11y-audit/previous/ | none
 - Prior accessibility claims in the repo (design docs, README, statement): <path and claim> | none — re-test, never trust
-- Report language: <language>
+- Report language: <language> (every agent writes its prose in it; nothing is translated afterwards)
 - Legal context (only if the user raised it): <EN 301 549 / EAA / public sector / none>
 
 ## Stack (from detect_stack.py + verification)

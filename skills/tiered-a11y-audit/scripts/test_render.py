@@ -115,6 +115,23 @@ def test_a_tier_without_findings_says_none_instead_of_a_symbol():
     assert "| 2 | 0 | none | none |" in draft and "| 3 | 0 | none | none |" in draft, "an empty tier leaves a symbol-only cell"
 
 
+def test_a_contrast_with_a_colon_is_put_into_words_and_code_is_left_alone():
+    f = finding("KBD-009", title="Grey text at 2.81:1", description="The ratio is 2.81:1 where 4.5:1 is needed; see `ratio(4.5:1)` and file.css:12:1.",
+                verify="Measure 4,5:1 or better.")
+    for lang, to in (("en", "to"), ("nl", "op")):
+        _, draft, ids = run([f], lang)
+        assert f"Grey text at 2.81 {to} 1" in draft and f"The ratio is 2.81 {to} 1 where 4.5 {to} 1 is needed" in draft, f"{lang}: ratio left with a colon"
+        assert f"Measure 4,5 {to} 1 or better." in draft, f"{lang}: a decimal comma is a ratio too"
+        assert "`ratio(4.5:1)`" in draft and "file.css:12:1" in draft, f"{lang}: code or a line and column reference was rewritten"
+        assert not [m for _, rule, m in lint(draft, ids) if "ratio" in m], f"{lang}: the linter still finds a ratio"
+
+
+def test_the_draft_no_longer_asks_for_a_translation():
+    _, draft, _ = run(FINDINGS, "nl")
+    assert "translate the finding text" not in draft and "the agents wrote it in the report language" in draft
+    assert "translated" not in draft.split("-->", 1)[1], "a gap further down still asks for a translation"
+
+
 def test_dutch_uses_one_word_per_severity():
     _, draft, ids = run(FINDINGS, "nl")
     assert "| blokkerend |" in draft and "Ernst blokkerend," in draft, "table and block disagree on the severity word"
