@@ -17,7 +17,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 SKILL = HERE.parent
 sys.path.insert(0, str(HERE))
-from build_briefs import without_fields, without_sections  # noqa: E402
+from build_briefs import own_rows, without_fields, without_sections  # noqa: E402
 ROW = re.compile(r"^\| (\d\.\d\.\d+) \|", re.M)
 
 
@@ -75,7 +75,7 @@ def test_a_persona_gets_the_fields_it_writes_and_not_the_expert_file_rules():
     for gone in ("- `sc_coverage` (top level)", "- `lenses` (top level)", "- `cross_lens_notes` (top level)", "- `fix.ownership` (required)",
                  "  - `override`", "- `leverage`", "- `kind`"):
         assert gone not in text, f"persona brief still carries: {gone}"
-    for needed in ("- `fingerprint`", "- `visual_impact`", "- `evidence`", "- `wcag`", "- `severity`", "- `proposed_tier`", "- `fix.location`",
+    for needed in ("- `id`", "- `instances`", "- `affected_users`", "best_practice_only", "- `fingerprint`", "- `visual_impact`", "- `evidence`", "- `wcag`", "- `severity`", "- `proposed_tier`", "- `fix.location`",
                    "- `effort`", "- `confidence`", "- `verify`", "Contrast findings additionally include"):
         assert needed in text, f"persona brief lost: {needed}"
 
@@ -89,11 +89,33 @@ def test_a_cut_ends_where_the_section_or_the_field_ends():
     rules = "- `a`: one\n  - sub of a\n  more of a\n\nA paragraph after the list.\n- `b`: two\n- `ab`: three"
     assert without_fields(rules, ("a",), "rules") == "\nA paragraph after the list.\n- `b`: two\n- `ab`: three"
     assert without_fields(rules, ("b",), "rules") == "- `a`: one\n  - sub of a\n  more of a\n\nA paragraph after the list.\n- `ab`: three"
+    spaced = "- `a`: one\n\n  still a, after a blank line\n\nA paragraph.\n- `b`: two"
+    assert without_fields(spaced, ("a",), "rules") == "\nA paragraph.\n- `b`: two", "indented text after a blank line was left behind without its rule"
+    code = "# T\n## A\n```sh\n# a comment, not a heading\n```\nstill A\n## B\nb"
+    assert without_sections(code, ("## A",), "doc") == "# T\n## B\nb", "a comment in a code block ended the cut"
+    assert without_sections("# T\n```\n## A\n```\n## A\na", ("## A",), "doc") == "# T\n```\n## A\n```", "a heading shown inside a code block is not the section"
+
+
+def test_a_cut_that_cannot_be_made_exactly_once_stops_instead_of_guessing():
+    for call, text in ((without_sections, "# T\n## A\na\n## A\nagain"), (without_sections, "# T\n## B\nb"),
+                       (without_fields, "- `x`: one\n- `x`: again"), (without_fields, "- `y`: one")):
+        try:
+            call(text, ("## A",) if call is without_sections else ("x",), "doc")
+        except SystemExit as e:
+            assert "update build_briefs.py" in str(e), e
+        else:
+            raise AssertionError(f"{call.__name__} went on with {text!r}")
+    owners = {"1.1.1": {"owner": "content-media"}, "2.1.1": {"owner": "keyboard-focus"}}
+    table = "| SC | Name | Level | Owner |\n|---|---|---|---|\n| 1.1.1 | Non-text Content | A | content-media |\n| 2.1.1 | Keyboard | A | keyboard-focus |\n| 9.9.9 | Not a criterion | A | nobody |"
+    assert own_rows(table, ["keyboard-focus"], owners).count("\n") == 3 and "| 1.1.1 |" not in own_rows(table, ["keyboard-focus"], owners)
+    assert "| 9.9.9 |" in own_rows(table, ["keyboard-focus"], owners), "a line that is not a known criterion is not a row to cut"
 
 
 def test_a_renamed_section_or_field_stops_the_build():
-    for path, old, new, word in (("references/tiering.md", "## Scoring rubric (1–10)", "## Scoring", "has no section"),
-                                 ("references/finding-schema.md", "- `leverage` (framework-maximizer only)", "- `lever` (framework-maximizer only)", "no rule for the field")):
+    for path, old, new, word in (("references/tiering.md", "## Scoring rubric (1–10)", "## Scoring", "has 0 sections"),
+                                 ("references/finding-schema.md", "- `leverage` (framework-maximizer only)", "- `lever` (framework-maximizer only)", "no single rule for the field"),
+                                 ("references/finding-schema.md", "- `cross_lens_notes` (top level)", "- `notes_across` (top level)", "no single rule for the field"),
+                                 ("references/wcag-ownership.md", "| 2.1.1 | Keyboard | A | keyboard-focus |", "| 2.1.1 | Keyboard | A | keyboard |", "no lens of this run")):
         copy = Path(tempfile.mkdtemp()) / "skill"
         shutil.copytree(SKILL, copy, ignore=shutil.ignore_patterns("__pycache__"))
         f = copy / path
@@ -101,7 +123,7 @@ def test_a_renamed_section_or_field_stops_the_build():
         assert old in text
         f.write_text(text.replace(old, new), encoding="utf-8")
         r, briefs = build(skill=copy)
-        assert r.returncode != 0 and word in r.stderr and "build_briefs.py" in r.stderr, f"{path}: {r.returncode} {r.stderr}"
+        assert r.returncode != 0 and word in r.stderr and r.stderr.startswith("build_briefs: "), f"{path}: {r.returncode} {r.stderr}"
 
 
 if __name__ == "__main__":

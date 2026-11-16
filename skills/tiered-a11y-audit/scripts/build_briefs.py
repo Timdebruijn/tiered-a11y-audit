@@ -13,7 +13,8 @@ briefs/_agents.json lists the agents of this run; check_phase.py reads it to kno
 
 A brief carries only what its reader acts on. From the references it leaves out: the rows of the criterion
 table that belong to other lenses, the parts of tiering.md that only the orchestrator and the merge use (the
-persona severity floors, the scoring rubric), and the schema fields that agent never writes. A section or field named here that no longer exists in the reference stops the build.
+persona severity floors, the scoring rubric), and the schema fields that agent never writes. A section or field named here that the reference no longer has exactly once stops the
+build, and so does a criterion whose owner is no lens of the run.
 """
 from __future__ import annotations
 
@@ -52,13 +53,19 @@ EXPERT_FILE_FIELDS = ("lenses", "sc_coverage", "cross_lens_notes", "fix.ownershi
 
 def without_sections(text: str, headings, source: str) -> str:
     """The document minus each named section: its heading line and everything up to the next heading of the same or a higher level."""
-    lines, out, skip = text.split("\n"), [], 0
-    missing = [h for h in headings if h not in lines]
-    if missing:
-        sys.exit(f"build_briefs: {source} has no section {missing[0]!r}; it was renamed or removed, update build_briefs.py")
-    for line in lines:
-        level = len(line) - len(line.lstrip("#")) if line.startswith("#") and line.lstrip("#").startswith(" ") else 0
-        if line in headings:
+    lines, levels, fenced = text.split("\n"), [], False
+    for line in lines:                                          # a "# comment" in a code block is not a heading
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+        heading = not fenced and line.startswith("#") and line.lstrip("#").startswith(" ")
+        levels.append(len(line) - len(line.lstrip("#")) if heading else 0)
+    for h in headings:
+        n = sum(1 for line, level in zip(lines, levels) if level and line == h)
+        if n != 1:
+            sys.exit(f"build_briefs: {source} has {n} sections {h!r}, expected one; it was renamed, removed or repeated, update build_briefs.py")
+    out, skip = [], 0
+    for line, level in zip(lines, levels):
+        if level and line in headings:
             skip = level
             continue
         if skip and level and level <= skip:
@@ -69,14 +76,17 @@ def without_sections(text: str, headings, source: str) -> str:
 
 
 def without_fields(text: str, fields, source: str) -> str:
-    """The schema minus the rule of each named field: its bullet and the indented lines under it."""
+    """The schema minus the rule of each named field: its bullet and what is indented under it, blank lines in between included."""
     lines, out, skipping = text.split("\n"), [], False
     for f in fields:
-        if not any(line.startswith(f"- `{f}`") for line in lines):
-            sys.exit(f"build_briefs: {source} has no rule for the field `{f}`; it was renamed or removed, update build_briefs.py")
-    for line in lines:
+        if sum(line.startswith(f"- `{f}`") for line in lines) != 1:
+            sys.exit(f"build_briefs: {source} has no single rule for the field `{f}`; it was renamed, removed or repeated, update build_briefs.py")
+    for i, line in enumerate(lines):
         if line.startswith("- `"):
             skipping = any(line.startswith(f"- `{f}`") for f in fields)
+        elif skipping and not line.strip():
+            # a blank line belongs to the cut rule only when indented text follows it
+            skipping = next((later for later in lines[i + 1:] if later.strip()), "").startswith(" ")
         elif skipping and not line.startswith(" "):
             skipping = False
         if not skipping:
@@ -84,10 +94,13 @@ def without_fields(text: str, fields, source: str) -> str:
     return "\n".join(out)
 
 
-def own_rows(text: str, lenses: list) -> str:
-    """The ownership document with only the criterion rows of these lenses; who owns the rest is in its per-owner list."""
-    row = re.compile(r"\|\s*\d\.\d\.\d+\s*\|[^|]+\|\s*A{1,3}\s*\|\s*([\w-]+)\s*\|")
-    kept = [line for line in text.split("\n") if not row.match(line) or row.match(line).group(1) in lenses]
+def own_rows(text: str, lenses: list, owners: dict) -> str:
+    """The ownership document with only the criterion rows of these lenses; who owns the rest is in its per-owner list.
+    A row is a table line whose first cell is a criterion parse_ownership() knows, so the two cannot disagree on the format."""
+    def keep(line: str) -> bool:
+        m = re.match(r"\|\s*(\d\.\d\.\d+)\s*\|", line)
+        return not (m and m.group(1) in owners) or owners[m.group(1)]["owner"] in lenses
+    kept = [line for line in text.split("\n") if keep(line)]
     if not lenses:                                              # no rows left: drop the table's header as well
         kept = [line for i, line in enumerate(kept) if not (line.startswith("| SC | Name |") or (i and kept[i - 1].startswith("| SC | Name |")))]
     return "\n".join(kept)
@@ -134,6 +147,10 @@ def main():
     persona_proto = rd(sd / "agents" / "personas" / "_protocol.md")
     agents = MINI if a.mini else LEAN if a.lean else {e: [e] for e in EXPERTS}
     owners = parse_ownership(refs / "wcag-ownership.md")
+    homeless = sorted(sc for sc, meta in owners.items() if not any(meta["owner"] in lenses for lenses in agents.values()))
+    if not owners or homeless:
+        sys.exit(f"build_briefs: wcag-ownership.md gives {len(owners)} criteria, of which {', '.join(homeless) or 'none'} have an owner "
+                 "that is no lens of this run; no brief would carry them")
     for brief, lenses in agents.items():
         body = "\n\n".join(rd(sd / "agents" / "experts" / f"{l}.md") for l in lenses)
         if len(lenses) > 1:
@@ -141,11 +158,11 @@ def main():
                     f"Write ONE findings file, named {brief}.json, with \"lenses\": {json.dumps(lenses)} at the top level and sc_coverage for both lenses; "
                     f"use the ID prefixes of whichever lens a finding belongs to.\n\n") + body
         (out / f"{brief}.md").write_text("\n\n---\n\n".join([
-            f"# Briefing: {brief}", expert_proto, body, lens_schema, tiering, own_rows(ownership, lenses), "# Stack profile\n\n" + profile + extras,
+            f"# Briefing: {brief}", expert_proto, body, lens_schema, tiering, own_rows(ownership, lenses, owners), "# Stack profile\n\n" + profile + extras,
             "# Framework playbook (relevant sections)\n\n" + pb, skeleton(brief, lenses, owners)]), encoding="utf-8")
     (out / "framework-maximizer.md").write_text("\n\n---\n\n".join([
         "# Briefing: framework-maximizer", expert_proto, rd(sd / "agents" / "experts" / "framework-maximizer.md"),
-        schema, tiering, own_rows(ownership, []), "# Stack profile\n\n" + profile + extras, "# Framework playbook (relevant sections)\n\n" + pb]), encoding="utf-8")
+        schema, tiering, own_rows(ownership, [], owners), "# Stack profile\n\n" + profile + extras, "# Framework playbook (relevant sections)\n\n" + pb]), encoding="utf-8")
     for p in PERSONAS:
         (out / f"{p}.md").write_text("\n\n---\n\n".join([
             f"# Briefing: {p}", persona_proto, rd(sd / "agents" / "personas" / f"{p}.md"), persona_schema,
