@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Export the audit into formats other tools and people expect.
 
-    python3 export_findings.py <repo>/.a11y-audit --format sarif|acr|csv [--lang en|nl] [--out <path>]
+    python3 export_findings.py <repo>/.a11y-audit --format sarif|acr|csv [--lang <code>] [--out <path>]
 
 sarif  SARIF 2.1.0 (GitHub code scanning, GitLab, VS Code SARIF viewers): one result per finding with
        file/line, severity mapped to error/warning/note, the WCAG criterion as rule id, help URL.
@@ -21,6 +21,9 @@ import json
 import re
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from labels import load_labels  # noqa: E402
 
 SEV_TO_SARIF = {"blocker": "error", "critical": "error", "serious": "error", "moderate": "warning", "minor": "note"}
 SEV_RANK = {"blocker": 0, "critical": 1, "serious": 2, "moderate": 3, "minor": 4}
@@ -93,33 +96,30 @@ def to_sarif(merged, ids, root_hint):
                       "results": results}]}
 
 
-def to_acr(ws, merged, ids, lang):
-    L = {"en": ("Criterion", "Conformance level", "Remarks and explanations", "Supports", "Partially Supports", "Does Not Support", "Not Applicable", "Not Evaluated",
-                "Draft conformance table generated from the audit's coverage matrix. 'Partially Supports' means every related finding is moderate or minor; 'Does Not Support' means at least one serious or worse. Review before using it in a VPAT, ACR or accessibility statement."),
-         "nl": ("Criterium", "Conformiteit", "Opmerkingen en toelichting", "Voldoet", "Voldoet gedeeltelijk", "Voldoet niet", "Niet van toepassing", "Niet beoordeeld",
-                "Conceptconformiteitstabel, gegenereerd uit de dekkingsmatrix van de audit. 'Voldoet gedeeltelijk' betekent dat alle bijbehorende bevindingen hooguit 'moderate' of 'minor' zijn; 'Voldoet niet' dat er minstens één 'serious' of erger is. Controleer dit voordat het in een VPAT, ACR of toegankelijkheidsverklaring belandt.")}[lang]
+def to_acr(ws, merged, ids, t):
+    L = t["acr"]
     sev_of = {f["id"]: f.get("severity") for f in merged["findings"]}
     for f in merged["findings"]:
         for m in f.get("merged_from", []):
             sev_of[m] = f.get("severity")
-    out = [f"# {'Conformance table (draft)' if lang == 'en' else 'Conformiteitstabel (concept)'}", "", L[8], "",
-           f"| {L[0]} | {L[1]} | {L[2]} |", "|---|---|---|"]
+    out = [f"# {L['title']}", "", L["intro"], "",
+           f"| {L['criterion']} | {L['level']} | {L['remarks']} |", "|---|---|---|"]
     for r in coverage_rows(ws):
         fids = [x.strip() for x in r["findings"].split(",") if x.strip()]
         st = r["status"]
         if st.startswith("fail"):
             worst = min((SEV_RANK.get(sev_of.get(i), 9) for i in fids), default=2)
-            level = L[4] if worst >= 3 else L[5]
+            level = L["partial"] if worst >= 3 else L["does_not"]
         elif st == "pass":
-            level = L[3]
+            level = L["supports"]
         elif st == "n/a":
-            level = L[6]
+            level = L["not_applicable"]
         else:
-            level = L[7]
+            level = L["not_evaluated"]
         parts = [", ".join(ids.get(i, i) for i in fids)] if fids else []
         if r["note"] and r["note"] != "none":
             parts.append(r["note"])
-        out.append(f"| {r['sc']} {r['name']} ({r['level']}) | {level} | {'. '.join(parts) or '—'} |")
+        out.append(f"| {r['sc']} {r['name']} ({r['level']}) | {level} | {'. '.join(parts) or t['none']} |")
     return "\n".join(out) + "\n"
 
 
@@ -139,7 +139,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("workspace")
     ap.add_argument("--format", required=True, choices=["sarif", "acr", "csv"])
-    ap.add_argument("--lang", default="en", choices=["en", "nl"])
+    ap.add_argument("--lang", default="en", help="language code for the conformance table; see labels.py")
     ap.add_argument("--out")
     a = ap.parse_args()
     ws = Path(a.workspace)
@@ -147,7 +147,7 @@ def main():
     if a.format == "sarif":
         text, default = json.dumps(to_sarif(merged, ids, "."), indent=2), "findings.sarif"
     elif a.format == "acr":
-        text, default = to_acr(ws, merged, ids, a.lang), "conformance-table.md"
+        text, default = to_acr(ws, merged, ids, load_labels(a.lang, ws)), "conformance-table.md"
     else:
         text, default = to_csv(merged, ids), "findings.csv"
     out = Path(a.out) if a.out else ws / default

@@ -41,7 +41,11 @@ FINDINGS = [
 ]
 
 
-def run(findings, lang="en"):
+def run(findings, lang="en", ws=None):
+    if ws is not None:
+        r = subprocess.run([sys.executable, str(HERE / "render_report_parts.py"), str(ws), "--lang", lang], capture_output=True, text=True)
+        draft = (ws / "REPORT.draft.md").read_text(encoding="utf-8") if (ws / "REPORT.draft.md").exists() else ""
+        return r, draft, ws
     d = tempfile.mkdtemp()
     ws = Path(d) / ".a11y-audit"
     (ws / "findings").mkdir(parents=True)
@@ -125,6 +129,59 @@ def test_a_finding_without_a_tier_is_reported_not_dropped():
     r, draft, _ = run(FINDINGS + [finding("KBD-009", visual_impact="huge", proposed_tier="T9")])
     assert r.returncode == 1, "a finding that is in no table must fail the run"
     assert "KBD-009" in r.stderr, r.stderr
+
+
+def translate(x):
+    """Stand-in for a real translation: every value changes, every {placeholder} survives."""
+    if isinstance(x, dict):
+        return {k: translate(v) for k, v in x.items()}
+    if isinstance(x, list):
+        return [translate(v) for v in x]
+    return "Ü " + x
+
+
+def test_any_language_works_after_one_translation():
+    d = tempfile.mkdtemp()
+    ws = Path(d) / ".a11y-audit"
+    (ws / "findings").mkdir(parents=True)
+    (Path(d) / "src").mkdir()
+    (Path(d) / "src" / "page.html").write_text("<main>\n<div onclick>\n</div>\n", encoding="utf-8")
+    (ws / "findings" / "experts.json").write_text(json.dumps({"agent": "experts", "findings": FINDINGS}), encoding="utf-8")
+    subprocess.run([sys.executable, str(HERE / "merge_findings.py"), str(ws), "--ownership", str(OWNERSHIP)], capture_output=True, check=True)
+
+    first, _, _ = run(None, "de", ws)             # a language the skill does not ship
+    labels = ws / "report-labels.de.json"
+    assert first.returncode == 2 and labels.exists(), "an unknown language must stop and hand over a labels file"
+    assert "translate" in first.stderr.lower()
+
+    data = json.loads(labels.read_text(encoding="utf-8"))
+    labels.write_text(json.dumps(translate({k: v for k, v in data.items() if not k.startswith("_")}), ensure_ascii=False), encoding="utf-8")
+    second, draft, _ = run(None, "de", ws)
+    assert second.returncode == 0, second.stderr
+    assert "## Ü In short" in draft and "| Ü serious |" in draft and "Ü Problem:" in draft, "translated labels are not what the draft uses"
+
+    broken = translate({k: v for k, v in data.items() if not k.startswith("_")})
+    broken["ann_tier"] = "no placeholder left"
+    del broken["f_problem"]
+    labels.write_text(json.dumps(broken, ensure_ascii=False), encoding="utf-8")
+    third, _, _ = run(None, "de", ws)
+    assert third.returncode == 2 and "f_problem" in third.stderr and "ann_tier" in third.stderr, third.stderr
+
+
+def test_shipped_languages_match_the_english_source():
+    sys.path.insert(0, str(HERE))
+    from labels import SHIPPED, check
+    source = json.loads((SHIPPED / "en.json").read_text(encoding="utf-8"))
+    shipped = sorted(SHIPPED.glob("*.json"))
+    assert len(shipped) >= 2
+    for path in shipped:
+        problems = check(json.loads(path.read_text(encoding="utf-8")), source)
+        assert not problems, f"{path.name}: {problems}"
+
+
+def test_a_language_code_cannot_leave_the_workspace():
+    r, _, _ = run(None, "../../etc/x", Path(tempfile.mkdtemp()))
+    assert r.returncode != 0 and "language code" in r.stderr, r.stderr
 
 
 if __name__ == "__main__":

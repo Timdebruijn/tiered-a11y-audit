@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Render the deterministic parts of the report so the orchestrator only writes prose and fix blocks.
 
-    python3 render_report_parts.py <repo>/.a11y-audit [--lang en|nl]
+    python3 render_report_parts.py <repo>/.a11y-audit [--lang <code>]
 
 Reads findings/_merged.json, findings/<agent>.json, coverage.md and personas/*.md. Writes:
   REPORT.draft.md   the whole report in the shape of references/report-template.md: every table, every
@@ -12,8 +12,10 @@ Reads findings/_merged.json, findings/<agent>.json, coverage.md and personas/*.m
                     results, appendix B and C), kept for anything that still reads it
   report-ids.json   report ID → source finding (so IDs stay consistent while writing)
 Every value in a finding block comes from _merged.json, so nothing is retyped and nothing can be dropped
-or altered on the way into the report. Finding text stays in the agents' working language (English);
-with --lang nl the scaffolding is Dutch and the orchestrator translates the finding text in place.
+or altered on the way into the report. Finding text stays in the agents' working language (English) and
+the orchestrator translates it in place. The fixed words of the report come from a labels file, so any
+language works: en and nl ship with the skill, and for another one the first run writes
+report-labels.<code>.json into the workspace to be translated once (see labels.py).
 Findings are ordered within a tier by severity, then effort (S before L); reorder in the report if
 impact-per-effort says otherwise, but keep the IDs. Tables stay within four columns and use words only.
 """
@@ -27,101 +29,11 @@ from collections import Counter, defaultdict
 from datetime import date
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from labels import load_labels  # noqa: E402
+
 SEV = {"blocker": 0, "critical": 1, "serious": 2, "moderate": 3, "minor": 4}
 EFF = {"S": 0, "M": 1, "L": 2}
-L = {
-    "en": {"tier": "Tier", "findings": "Findings", "highest": "Highest severity", "effort": "Estimated effort", "id": "ID",
-           "title": "Title", "severity": "Severity", "flow": "Flow", "persona": "Persona", "result": "Result",
-           "obstacle": "Main obstacle", "sc": "Criterion", "name": "Name", "status": "Status", "note": "Note",
-           "source": "Source IDs", "location": "Location", "none": "none", "effort_unit": {"S": "small", "M": "medium", "L": "large"},
-           "results": {"completed": "completed", "difficulty": "with difficulty", "help": "with help", "failed": "failed", "na": "not applicable"},
-           "own": {"upstream": "upstream", "accepted": "accepted"}, "upstream_h": "Needs an upstream change", "accepted_h": "Accepted exceptions",
-           "sev": {}, "conf": {"high": "high", "medium": "medium", "low": "low"},
-           "users": {"screen-reader": "screen-reader users", "low-vision": "people with low vision", "colour-blind": "colour-blind people",
-                     "motor-voice": "keyboard and voice-control users", "cognitive": "people with a cognitive disability",
-                     "deaf": "Deaf and hard-of-hearing people", "vestibular": "people with a vestibular disorder",
-                     "older-novice": "older and inexperienced users"},
-           "report": "Accessibility report", "short": "In short", "summary": "Summary", "changes": "Changes since the previous audit",
-           "howto": "How to read this report", "works": "What already works well",
-           "t1": "Tier 1: invisible improvements", "t2": "Tier 2: small, non-shocking adjustments", "t3": "Tier 3: the road to a 10",
-           "voice": "Voice of the users", "advice": "Structural advice: framework and tooling", "verify_h": "To verify", "appendix": "Appendix",
-           "smaller": "Smaller items", "tokens": "Proposed token changes", "top5": "Top 5 actions",
-           "f_problem": "Problem", "f_impact": "Design impact", "f_where": "Where", "f_fix": "Fix", "f_watch": "Watch out", "f_verify": "Verify",
-           "first": "Severity {sev}, {crit}, affects {users}, effort {eff}, confidence {conf}.",
-           "crit": "criterion {sc} {name} (level {level})", "bp": "best practice without a criterion", "everyone": "everyone",
-           "lines": "lines {a} to {b}", "line": "line {a}", "instances": "{n} instances", "selector": "selector", "to1": "{r} to 1",
-           "and_then": "{a}, then {b}", "before": "before", "after": "after", "at": "at",
-           "howto_p": ["Tier 1 holds changes that a sighted mouse user with default settings does not notice; they can ship today. "
-                       "Tier 2 holds small visible changes that leave the product instantly recognisable. Tier 3 is everything larger.",
-                       "Severity and tier are independent. A blocker can be an invisible fix, and a nicety can need a redesign.",
-                       "The personas in this report are simulations by an AI. They are not a substitute for testing with disabled people."],
-           "tier_p": {1: "This tier promises that nobody who uses a mouse with default settings sees a difference. Number of findings: {n}.",
-                      2: "This tier holds visible changes that keep the product instantly recognisable. Number of findings: {n}.",
-                      3: "This tier holds everything larger: design, content, features, validation with users, and process. Number of findings: {n}."},
-           "ann_tier": "The next table lists the findings of this tier, {n} in total, with ID, title, severity and effort.",
-           "ann_counts": "The next table lists the three tiers with their number of findings, highest severity and estimated effort.",
-           "ann_personas": "The next table lists the walks, {n} in total, with the flow, the persona, the result and the main obstacle.",
-           "ann_tokens": "The next table lists the proposed colour changes, {n} in total, with the usage, the colour before, the colour after and the contrast before and after.",
-           "ann_advice": "The next table lists the places where one change resolves several findings, {n} in total, with what it resolves, the effort and the reason.",
-           "ann_cov": "The next table lists all 55 level A and level AA criteria with their status.",
-           "ann_full": "The next table lists all findings, {n} in total, with their source IDs, severity and location.",
-           "delta_e": "The largest colour difference among these changes is {d} (OKLab delta E).",
-           "tok_cols": ["Usage", "Before", "After", "Contrast before and after"], "adv_cols": ["Change", "Resolves", "Effort", "Why here"],
-           "delta_h": {"resolved": "Resolved", "still_open": "Still open", "regressed": "Regressed", "new": "New"},
-           "appx": {"a": "A. Method and limitations", "b": "B. WCAG 2.2 level A and AA coverage", "c": "C. Full finding list", "d": "D. Legal context"},
-           "method": "{agent}: {method}; examined {n} files or flows; not examined: {skipped}.",
-           "voice_p": "The personas below are simulations by an AI, not real users. These ran: {names}.",
-           "no_advice": "No single change was found that resolves several findings at once.", "nothing": "Nothing in this category.",
-           "flag_blocker": "blocker", "flag_all": "affects everyone", "top_line": "{rid}, tier {tier}, effort {eff}: {title}",
-           "status_word": {}, "cov_counts": "Of the 55 criteria, {p} pass, {f} fail, {nt} were not tested and {na} are not applicable."},
-    "nl": {"tier": "Niveau", "findings": "Bevindingen", "highest": "Hoogste ernst", "effort": "Geschatte moeite", "id": "ID",
-           "title": "Titel", "severity": "Ernst", "flow": "Flow", "persona": "Persona", "result": "Resultaat",
-           "obstacle": "Belangrijkste obstakel", "sc": "Criterium", "name": "Naam", "status": "Status", "note": "Toelichting",
-           "source": "Bron-ID's", "location": "Locatie", "none": "geen", "effort_unit": {"S": "klein", "M": "middel", "L": "groot"},
-           "results": {"completed": "voltooid", "difficulty": "met moeite", "help": "met hulp", "failed": "mislukt", "na": "niet van toepassing"},
-           "own": {"upstream": "upstream", "accepted": "geaccepteerd"}, "upstream_h": "Vraagt een wijziging upstream", "accepted_h": "Geaccepteerde uitzonderingen",
-           "sev": {"blocker": "blokkerend", "critical": "kritiek", "serious": "ernstig", "moderate": "matig", "minor": "klein"},
-           "conf": {"high": "hoog", "medium": "middel", "low": "laag"},
-           "users": {"screen-reader": "schermlezergebruikers", "low-vision": "slechtzienden", "colour-blind": "kleurenblinden",
-                     "motor-voice": "toetsenbord- en spraakbesturingsgebruikers", "cognitive": "mensen met een cognitieve beperking",
-                     "deaf": "doven en slechthorenden", "vestibular": "mensen met een evenwichtsstoornis",
-                     "older-novice": "oudere en onervaren gebruikers"},
-           "report": "Toegankelijkheidsrapport", "short": "In het kort", "summary": "Samenvatting", "changes": "Wijzigingen sinds de vorige audit",
-           "howto": "Leeswijzer", "works": "Wat al goed gaat",
-           "t1": "Niveau 1: onzichtbare verbeteringen", "t2": "Niveau 2: kleine aanpassingen", "t3": "Niveau 3: op weg naar een 10",
-           "voice": "Stem van de gebruikers", "advice": "Structureel advies: framework en tooling", "verify_h": "Nog te verifiëren", "appendix": "Bijlagen",
-           "smaller": "Kleinere punten", "tokens": "Voorgestelde tokenwijzigingen", "top5": "Top 5 acties",
-           "f_problem": "Probleem", "f_impact": "Ontwerpimpact", "f_where": "Waar", "f_fix": "Oplossing", "f_watch": "Let op", "f_verify": "Controleren",
-           "first": "Ernst {sev}, {crit}, raakt {users}, moeite {eff}, zekerheid {conf}.",
-           "crit": "criterium {sc} {name} (niveau {level})", "bp": "best practice zonder criterium", "everyone": "iedereen",
-           "lines": "regels {a} tot en met {b}", "line": "regel {a}", "instances": "{n} keer", "selector": "selector", "to1": "{r} op 1",
-           "and_then": "{a}, daarna {b}", "before": "voor", "after": "na", "at": "op",
-           "howto_p": ["Niveau 1 bevat wijzigingen die een ziende muisgebruiker met standaardinstellingen niet opmerkt; ze kunnen vandaag live. "
-                       "Niveau 2 bevat kleine zichtbare wijzigingen waarbij het product direct herkenbaar blijft. Niveau 3 is alles wat groter is.",
-                       "Ernst en niveau staan los van elkaar. Een blokkade kan een onzichtbare fix zijn, en een verfijning kan een herontwerp vragen.",
-                       "De persona's in dit rapport zijn simulaties door een AI. Ze vervangen geen test met mensen met een beperking."],
-           "tier_p": {1: "Dit niveau belooft dat niemand die met een muis en standaardinstellingen werkt een verschil ziet. Aantal bevindingen: {n}.",
-                      2: "Dit niveau bevat zichtbare wijzigingen waarbij het product direct herkenbaar blijft. Aantal bevindingen: {n}.",
-                      3: "Dit niveau bevat alles wat groter is: ontwerp, inhoud, functies, validatie met gebruikers en proces. Aantal bevindingen: {n}."},
-           "ann_tier": "De volgende tabel bevat de bevindingen van dit niveau, {n} in totaal, met ID, titel, ernst en moeite.",
-           "ann_counts": "De volgende tabel bevat de drie niveaus met het aantal bevindingen, de hoogste ernst en de geschatte moeite.",
-           "ann_personas": "De volgende tabel bevat de doorlopen flows, {n} in totaal, met de flow, de persona, het resultaat en het belangrijkste obstakel.",
-           "ann_tokens": "De volgende tabel bevat de voorgestelde kleurwijzigingen, {n} in totaal, met het gebruik, de kleur ervoor, de kleur erna en het contrast voor en na.",
-           "ann_advice": "De volgende tabel bevat de plekken waar één wijziging meerdere bevindingen oplost, {n} in totaal, met wat ze oplost, de moeite en de reden.",
-           "ann_cov": "De volgende tabel bevat alle 55 criteria van niveau A en AA met hun status.",
-           "ann_full": "De volgende tabel bevat alle bevindingen, {n} in totaal, met hun bron-ID's, ernst en locatie.",
-           "delta_e": "Het grootste kleurverschil onder deze wijzigingen is {d} (OKLab delta E).",
-           "tok_cols": ["Gebruik", "Voor", "Na", "Contrast voor en na"], "adv_cols": ["Wijziging", "Lost op", "Moeite", "Waarom hier"],
-           "delta_h": {"resolved": "Opgelost", "still_open": "Nog open", "regressed": "Teruggevallen", "new": "Nieuw"},
-           "appx": {"a": "A. Methode en beperkingen", "b": "B. Dekking van WCAG 2.2 niveau A en AA", "c": "C. Volledige lijst", "d": "D. Juridische context"},
-           "method": "{agent}: {method}; {n} bestanden of flows onderzocht; niet onderzocht: {skipped}.",
-           "voice_p": "De persona's hieronder zijn simulaties door een AI, geen echte gebruikers. Deze zijn doorlopen: {names}.",
-           "no_advice": "Er is geen enkele wijziging gevonden die meerdere bevindingen tegelijk oplost.", "nothing": "Niets in deze categorie.",
-           "flag_blocker": "blokkade", "flag_all": "raakt iedereen", "top_line": "{rid}, niveau {tier}, moeite {eff}: {title}",
-           "status_word": {"pass": "voldoet", "fail": "voldoet niet", "not-tested": "niet getest"},
-           "cov_counts": "Van de 55 criteria voldoen er {p}, voldoen er {f} niet, zijn er {nt} niet getest en zijn er {na} niet van toepassing."},
-}
-
 WRITE = "<!-- WRITE: {} -->"
 
 
@@ -250,10 +162,11 @@ def persona_notes(pdir: Path, src_to_rep: dict):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("workspace")
-    ap.add_argument("--lang", default="en", choices=sorted(L))
+    ap.add_argument("--lang", default="en", help="report language code: en and nl ship with the skill, any other is "
+                                                 "translated once from a labels file written into the workspace")
     a = ap.parse_args()
     ws = Path(a.workspace)
-    t = L[a.lang]
+    t = load_labels(a.lang, ws)
     data = json.loads((ws / "findings" / "_merged.json").read_text(encoding="utf-8"))
     dropped = [f.get("id") for f in data["findings"] if f.get("tier") not in (1, 2, 3)]
     findings = [f for f in data["findings"] if f.get("tier") in (1, 2, 3)]
@@ -370,7 +283,7 @@ def main():
 
     for tier in (1, 2):
         fs = by_tier[tier]
-        d += [f"## {t['t' + str(tier)]}", "", t["tier_p"][tier].format(n=len(fs)), ""]
+        d += [f"## {t['t' + str(tier)]}", "", t["tier_p"][str(tier)].format(n=len(fs)), ""]
         if not fs:
             continue
         d += [t["ann_tier"].format(n=len(fs)), ""] + overview[tier] + [""]
@@ -398,7 +311,7 @@ def main():
         d += ownership[tier]
 
     fs = by_tier[3]
-    d += [f"## {t['t3']}", "", t["tier_p"][3].format(n=len(fs)), "",
+    d += [f"## {t['t3']}", "", t["tier_p"]["3"].format(n=len(fs)), "",
           WRITE.format("sort the items below into five H3 blocks in this fixed order: Design, Content, Features, Validation with users, "
                        "Process and governance. One list per block, one line per item: what, why (which users or criteria), rough effort. "
                        "Add the standing tier-3 advice (testing with disabled users, CI gate) where no finding covers it. No tables here"), ""]

@@ -1,0 +1,162 @@
+{
+  "tier": "Niveau",
+  "findings": "Bevindingen",
+  "highest": "Hoogste ernst",
+  "effort": "Geschatte moeite",
+  "id": "ID",
+  "title": "Titel",
+  "severity": "Ernst",
+  "flow": "Flow",
+  "persona": "Persona",
+  "result": "Resultaat",
+  "obstacle": "Belangrijkste obstakel",
+  "sc": "Criterium",
+  "name": "Naam",
+  "status": "Status",
+  "note": "Toelichting",
+  "source": "Bron-ID's",
+  "location": "Locatie",
+  "none": "geen",
+  "effort_unit": {
+    "S": "klein",
+    "M": "middel",
+    "L": "groot"
+  },
+  "results": {
+    "completed": "voltooid",
+    "difficulty": "met moeite",
+    "help": "met hulp",
+    "failed": "mislukt",
+    "na": "niet van toepassing"
+  },
+  "own": {
+    "upstream": "upstream",
+    "accepted": "geaccepteerd"
+  },
+  "upstream_h": "Vraagt een wijziging upstream",
+  "accepted_h": "Geaccepteerde uitzonderingen",
+  "sev": {
+    "blocker": "blokkerend",
+    "critical": "kritiek",
+    "serious": "ernstig",
+    "moderate": "matig",
+    "minor": "klein"
+  },
+  "conf": {
+    "high": "hoog",
+    "medium": "middel",
+    "low": "laag"
+  },
+  "users": {
+    "screen-reader": "schermlezergebruikers",
+    "low-vision": "slechtzienden",
+    "colour-blind": "kleurenblinden",
+    "motor-voice": "toetsenbord- en spraakbesturingsgebruikers",
+    "cognitive": "mensen met een cognitieve beperking",
+    "deaf": "doven en slechthorenden",
+    "vestibular": "mensen met een evenwichtsstoornis",
+    "older-novice": "oudere en onervaren gebruikers"
+  },
+  "report": "Toegankelijkheidsrapport",
+  "short": "In het kort",
+  "summary": "Samenvatting",
+  "changes": "Wijzigingen sinds de vorige audit",
+  "howto": "Leeswijzer",
+  "works": "Wat al goed gaat",
+  "t1": "Niveau 1: onzichtbare verbeteringen",
+  "t2": "Niveau 2: kleine aanpassingen",
+  "t3": "Niveau 3: op weg naar een 10",
+  "voice": "Stem van de gebruikers",
+  "advice": "Structureel advies: framework en tooling",
+  "verify_h": "Nog te verifiëren",
+  "appendix": "Bijlagen",
+  "smaller": "Kleinere punten",
+  "tokens": "Voorgestelde tokenwijzigingen",
+  "top5": "Top 5 acties",
+  "f_problem": "Probleem",
+  "f_impact": "Ontwerpimpact",
+  "f_where": "Waar",
+  "f_fix": "Oplossing",
+  "f_watch": "Let op",
+  "f_verify": "Controleren",
+  "first": "Ernst {sev}, {crit}, raakt {users}, moeite {eff}, zekerheid {conf}.",
+  "crit": "criterium {sc} {name} (niveau {level})",
+  "bp": "best practice zonder criterium",
+  "everyone": "iedereen",
+  "lines": "regels {a} tot en met {b}",
+  "line": "regel {a}",
+  "instances": "{n} keer",
+  "selector": "selector",
+  "to1": "{r} op 1",
+  "and_then": "{a}, daarna {b}",
+  "before": "voor",
+  "after": "na",
+  "at": "op",
+  "howto_p": [
+    "Niveau 1 bevat wijzigingen die een ziende muisgebruiker met standaardinstellingen niet opmerkt; ze kunnen vandaag live. Niveau 2 bevat kleine zichtbare wijzigingen waarbij het product direct herkenbaar blijft. Niveau 3 is alles wat groter is.",
+    "Ernst en niveau staan los van elkaar. Een blokkade kan een onzichtbare fix zijn, en een verfijning kan een herontwerp vragen.",
+    "De persona's in dit rapport zijn simulaties door een AI. Ze vervangen geen test met mensen met een beperking."
+  ],
+  "tier_p": {
+    "1": "Dit niveau belooft dat niemand die met een muis en standaardinstellingen werkt een verschil ziet. Aantal bevindingen: {n}.",
+    "2": "Dit niveau bevat zichtbare wijzigingen waarbij het product direct herkenbaar blijft. Aantal bevindingen: {n}.",
+    "3": "Dit niveau bevat alles wat groter is: ontwerp, inhoud, functies, validatie met gebruikers en proces. Aantal bevindingen: {n}."
+  },
+  "ann_tier": "De volgende tabel bevat de bevindingen van dit niveau, {n} in totaal, met ID, titel, ernst en moeite.",
+  "ann_counts": "De volgende tabel bevat de drie niveaus met het aantal bevindingen, de hoogste ernst en de geschatte moeite.",
+  "ann_personas": "De volgende tabel bevat de doorlopen flows, {n} in totaal, met de flow, de persona, het resultaat en het belangrijkste obstakel.",
+  "ann_tokens": "De volgende tabel bevat de voorgestelde kleurwijzigingen, {n} in totaal, met het gebruik, de kleur ervoor, de kleur erna en het contrast voor en na.",
+  "ann_advice": "De volgende tabel bevat de plekken waar één wijziging meerdere bevindingen oplost, {n} in totaal, met wat ze oplost, de moeite en de reden.",
+  "ann_cov": "De volgende tabel bevat alle 55 criteria van niveau A en AA met hun status.",
+  "ann_full": "De volgende tabel bevat alle bevindingen, {n} in totaal, met hun bron-ID's, ernst en locatie.",
+  "delta_e": "Het grootste kleurverschil onder deze wijzigingen is {d} (OKLab delta E).",
+  "tok_cols": [
+    "Gebruik",
+    "Voor",
+    "Na",
+    "Contrast voor en na"
+  ],
+  "adv_cols": [
+    "Wijziging",
+    "Lost op",
+    "Moeite",
+    "Waarom hier"
+  ],
+  "delta_h": {
+    "resolved": "Opgelost",
+    "still_open": "Nog open",
+    "regressed": "Teruggevallen",
+    "new": "Nieuw"
+  },
+  "appx": {
+    "a": "A. Methode en beperkingen",
+    "b": "B. Dekking van WCAG 2.2 niveau A en AA",
+    "c": "C. Volledige lijst",
+    "d": "D. Juridische context"
+  },
+  "method": "{agent}: {method}; {n} bestanden of flows onderzocht; niet onderzocht: {skipped}.",
+  "voice_p": "De persona's hieronder zijn simulaties door een AI, geen echte gebruikers. Deze zijn doorlopen: {names}.",
+  "no_advice": "Er is geen enkele wijziging gevonden die meerdere bevindingen tegelijk oplost.",
+  "nothing": "Niets in deze categorie.",
+  "flag_blocker": "blokkade",
+  "flag_all": "raakt iedereen",
+  "top_line": "{rid}, niveau {tier}, moeite {eff}: {title}",
+  "status_word": {
+    "pass": "voldoet",
+    "fail": "voldoet niet",
+    "not-tested": "niet getest"
+  },
+  "cov_counts": "Van de 55 criteria voldoen er {p}, voldoen er {f} niet, zijn er {nt} niet getest en zijn er {na} niet van toepassing.",
+  "acr": {
+    "criterion": "Criterium",
+    "level": "Conformiteit",
+    "remarks": "Opmerkingen en toelichting",
+    "supports": "Voldoet",
+    "partial": "Voldoet gedeeltelijk",
+    "does_not": "Voldoet niet",
+    "not_applicable": "Niet van toepassing",
+    "not_evaluated": "Niet beoordeeld",
+    "intro": "Conceptconformiteitstabel, gegenereerd uit de dekkingsmatrix van de audit. 'Voldoet gedeeltelijk' betekent dat alle bijbehorende bevindingen hooguit 'moderate' of 'minor' zijn; 'Voldoet niet' dat er minstens één 'serious' of erger is. Controleer dit voordat het in een VPAT, ACR of toegankelijkheidsverklaring belandt.",
+    "title": "Conformiteitstabel (concept)"
+  }
+}

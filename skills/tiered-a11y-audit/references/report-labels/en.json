@@ -1,0 +1,162 @@
+{
+  "tier": "Tier",
+  "findings": "Findings",
+  "highest": "Highest severity",
+  "effort": "Estimated effort",
+  "id": "ID",
+  "title": "Title",
+  "severity": "Severity",
+  "flow": "Flow",
+  "persona": "Persona",
+  "result": "Result",
+  "obstacle": "Main obstacle",
+  "sc": "Criterion",
+  "name": "Name",
+  "status": "Status",
+  "note": "Note",
+  "source": "Source IDs",
+  "location": "Location",
+  "none": "none",
+  "effort_unit": {
+    "S": "small",
+    "M": "medium",
+    "L": "large"
+  },
+  "results": {
+    "completed": "completed",
+    "difficulty": "with difficulty",
+    "help": "with help",
+    "failed": "failed",
+    "na": "not applicable"
+  },
+  "own": {
+    "upstream": "upstream",
+    "accepted": "accepted"
+  },
+  "upstream_h": "Needs an upstream change",
+  "accepted_h": "Accepted exceptions",
+  "sev": {
+    "blocker": "blocker",
+    "critical": "critical",
+    "serious": "serious",
+    "moderate": "moderate",
+    "minor": "minor"
+  },
+  "conf": {
+    "high": "high",
+    "medium": "medium",
+    "low": "low"
+  },
+  "users": {
+    "screen-reader": "screen-reader users",
+    "low-vision": "people with low vision",
+    "colour-blind": "colour-blind people",
+    "motor-voice": "keyboard and voice-control users",
+    "cognitive": "people with a cognitive disability",
+    "deaf": "Deaf and hard-of-hearing people",
+    "vestibular": "people with a vestibular disorder",
+    "older-novice": "older and inexperienced users"
+  },
+  "report": "Accessibility report",
+  "short": "In short",
+  "summary": "Summary",
+  "changes": "Changes since the previous audit",
+  "howto": "How to read this report",
+  "works": "What already works well",
+  "t1": "Tier 1: invisible improvements",
+  "t2": "Tier 2: small, non-shocking adjustments",
+  "t3": "Tier 3: the road to a 10",
+  "voice": "Voice of the users",
+  "advice": "Structural advice: framework and tooling",
+  "verify_h": "To verify",
+  "appendix": "Appendix",
+  "smaller": "Smaller items",
+  "tokens": "Proposed token changes",
+  "top5": "Top 5 actions",
+  "f_problem": "Problem",
+  "f_impact": "Design impact",
+  "f_where": "Where",
+  "f_fix": "Fix",
+  "f_watch": "Watch out",
+  "f_verify": "Verify",
+  "first": "Severity {sev}, {crit}, affects {users}, effort {eff}, confidence {conf}.",
+  "crit": "criterion {sc} {name} (level {level})",
+  "bp": "best practice without a criterion",
+  "everyone": "everyone",
+  "lines": "lines {a} to {b}",
+  "line": "line {a}",
+  "instances": "{n} instances",
+  "selector": "selector",
+  "to1": "{r} to 1",
+  "and_then": "{a}, then {b}",
+  "before": "before",
+  "after": "after",
+  "at": "at",
+  "howto_p": [
+    "Tier 1 holds changes that a sighted mouse user with default settings does not notice; they can ship today. Tier 2 holds small visible changes that leave the product instantly recognisable. Tier 3 is everything larger.",
+    "Severity and tier are independent. A blocker can be an invisible fix, and a nicety can need a redesign.",
+    "The personas in this report are simulations by an AI. They are not a substitute for testing with disabled people."
+  ],
+  "tier_p": {
+    "1": "This tier promises that nobody who uses a mouse with default settings sees a difference. Number of findings: {n}.",
+    "2": "This tier holds visible changes that keep the product instantly recognisable. Number of findings: {n}.",
+    "3": "This tier holds everything larger: design, content, features, validation with users, and process. Number of findings: {n}."
+  },
+  "ann_tier": "The next table lists the findings of this tier, {n} in total, with ID, title, severity and effort.",
+  "ann_counts": "The next table lists the three tiers with their number of findings, highest severity and estimated effort.",
+  "ann_personas": "The next table lists the walks, {n} in total, with the flow, the persona, the result and the main obstacle.",
+  "ann_tokens": "The next table lists the proposed colour changes, {n} in total, with the usage, the colour before, the colour after and the contrast before and after.",
+  "ann_advice": "The next table lists the places where one change resolves several findings, {n} in total, with what it resolves, the effort and the reason.",
+  "ann_cov": "The next table lists all 55 level A and level AA criteria with their status.",
+  "ann_full": "The next table lists all findings, {n} in total, with their source IDs, severity and location.",
+  "delta_e": "The largest colour difference among these changes is {d} (OKLab delta E).",
+  "tok_cols": [
+    "Usage",
+    "Before",
+    "After",
+    "Contrast before and after"
+  ],
+  "adv_cols": [
+    "Change",
+    "Resolves",
+    "Effort",
+    "Why here"
+  ],
+  "delta_h": {
+    "resolved": "Resolved",
+    "still_open": "Still open",
+    "regressed": "Regressed",
+    "new": "New"
+  },
+  "appx": {
+    "a": "A. Method and limitations",
+    "b": "B. WCAG 2.2 level A and AA coverage",
+    "c": "C. Full finding list",
+    "d": "D. Legal context"
+  },
+  "method": "{agent}: {method}; examined {n} files or flows; not examined: {skipped}.",
+  "voice_p": "The personas below are simulations by an AI, not real users. These ran: {names}.",
+  "no_advice": "No single change was found that resolves several findings at once.",
+  "nothing": "Nothing in this category.",
+  "flag_blocker": "blocker",
+  "flag_all": "affects everyone",
+  "top_line": "{rid}, tier {tier}, effort {eff}: {title}",
+  "status_word": {
+    "pass": "pass",
+    "fail": "fail",
+    "not-tested": "not tested"
+  },
+  "cov_counts": "Of the 55 criteria, {p} pass, {f} fail, {nt} were not tested and {na} are not applicable.",
+  "acr": {
+    "criterion": "Criterion",
+    "level": "Conformance level",
+    "remarks": "Remarks and explanations",
+    "supports": "Supports",
+    "partial": "Partially Supports",
+    "does_not": "Does Not Support",
+    "not_applicable": "Not Applicable",
+    "not_evaluated": "Not Evaluated",
+    "intro": "Draft conformance table generated from the audit's coverage matrix. 'Partially Supports' means every related finding is moderate or minor; 'Does Not Support' means at least one serious or worse. Review before using it in a VPAT, ACR or accessibility statement.",
+    "title": "Conformance table (draft)"
+  }
+}
