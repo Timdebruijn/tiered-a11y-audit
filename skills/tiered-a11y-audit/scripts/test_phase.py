@@ -1,0 +1,202 @@
+#!/usr/bin/env python3
+"""Self-check for check_phase.py: each gate stays shut until its phase really left its output.
+
+    python3 scripts/test_phase.py
+
+Walks one mini audit through phases 3 to 6 with the real scripts (build_briefs, merge_findings,
+render_report_parts) and at each step breaks one thing the gate has to notice. Standard library only,
+writes to a temp dir.
+"""
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+from check_phase import PHASES  # noqa: E402
+from test_render import finding  # noqa: E402
+
+
+def script(name, *args):
+    r = subprocess.run([sys.executable, str(HERE / name), *map(str, args)], capture_output=True, text=True)
+    assert r.returncode == 0, f"{name}: {r.stdout}{r.stderr}"
+    return r
+
+
+def gaps(ws, phase):
+    out = []
+    PHASES[phase](ws, out)
+    return out
+
+
+def one(ws, phase, word):
+    got = gaps(ws, phase)
+    assert len(got) == 1 and word in got[0], f"phase {phase}: expected one gap with '{word}', got {got}"
+
+
+def touch_after(p, other):
+    t = other.stat().st_mtime + 5
+    os.utime(p, (t, t))
+
+
+def merge(ws):
+    script("merge_findings.py", ws, "--ownership", HERE.parent / "references" / "wcag-ownership.md")
+
+
+def workspace():
+    repo = Path(tempfile.mkdtemp())
+    ws = repo / ".a11y-audit"
+    ws.mkdir()
+    (repo / "src").mkdir()
+    (repo / "src" / "page.html").write_text("<main>\n<div onclick>\n</div>\n", encoding="utf-8")
+    return ws
+
+
+def through_phase_3(ws):
+    for name in ("stack-detect.md", "stack-profile.md", "pattern-inventory.md", "colour-pairs.md"):
+        (ws / name).write_text(f"# {name}\n\n- Mode: mini\n", encoding="utf-8")
+    script("build_briefs.py", HERE.parent, ws, "--mini")
+
+
+def skeleton(ws, agent):
+    brief = (ws / "briefs" / f"{agent}.md").read_text(encoding="utf-8")
+    return json.loads(re.findall(r"```json\n(.*?)\n```", brief, re.S)[-1])
+
+
+def through_phase_4(ws):
+    (ws / "findings").mkdir(exist_ok=True)
+    for agent in ("perceive", "operate"):
+        data = skeleton(ws, agent)
+        for sc in data["sc_coverage"]:
+            data["sc_coverage"][sc] = {"status": "not-tested", "note": "static pass only"}
+        if agent == "operate":
+            data["findings"] = [finding("KBD-001")]
+            data["sc_coverage"]["2.1.1"] = {"status": "fail", "findings": ["KBD-001"]}
+        (ws / "findings" / f"{agent}.json").write_text(json.dumps(data), encoding="utf-8")
+    merge(ws)
+
+
+def through_phase_5(ws):
+    (ws / "personas").mkdir(exist_ok=True)
+    for p in ("screen-reader-user", "low-vision-user"):
+        (ws / "personas" / f"{p}.md").write_text(f"# {p}\n\nWalked the key flows.\n", encoding="utf-8")
+    (ws / "findings" / "framework-maximizer.json").write_text(json.dumps({"agent": "framework-maximizer", "findings": []}), encoding="utf-8")
+    merge(ws)
+
+
+def test_phase_3_wants_the_baseline_the_profile_and_fresh_briefs():
+    ws = workspace()
+    assert len(gaps(ws, "3")) == 5, gaps(ws, "3")                    # four files and the list of agents
+    through_phase_3(ws)
+    assert gaps(ws, "3") == [], gaps(ws, "3")
+    (ws / "aria-digest.md").write_text("", encoding="utf-8")
+    one(ws, "3", "aria-digest.md is empty")
+    (ws / "automated").mkdir()
+    assert [g.split(":")[0] for g in gaps(ws, "3")] == ["automated/ has no summary.json", "aria-digest.md is missing or empty although there is a runtime scan"]
+    (ws / "automated" / "summary.json").write_text("{}", encoding="utf-8")
+    (ws / "aria-digest.md").write_text("# digest\n", encoding="utf-8")
+    assert gaps(ws, "3") == []
+    (ws / "briefs" / "operate.md").unlink()
+    one(ws, "3", "briefs missing for operate")
+    through_phase_3(ws)
+    profile = ws / "stack-profile.md"
+    profile.write_text(profile.read_text(encoding="utf-8") + "- Router: …\n", encoding="utf-8")
+    touch_after(profile, ws / "briefs" / "_agents.json")
+    assert {g[:24] for g in gaps(ws, "3")} == {"stack-profile.md changed", "stack-profile.md has 1 l"}, gaps(ws, "3")
+
+
+def test_phase_4_wants_every_expert_every_criterion_and_a_current_merge():
+    ws = workspace()
+    through_phase_3(ws)
+    assert [g.split(" is ")[0] for g in gaps(ws, "4")] == ["findings/perceive.json", "findings/operate.json", "findings/_merged.json"]
+    through_phase_4(ws)
+    assert gaps(ws, "4") == [], gaps(ws, "4")
+    f = ws / "findings" / "operate.json"
+    good = f.read_text(encoding="utf-8")
+
+    f.write_text(json.dumps(skeleton(ws, "operate")), encoding="utf-8")       # the untouched skeleton is not a report
+    merge(ws)
+    got = gaps(ws, "4")
+    assert len(got) == 1 and "gives no status for 23 of its 23 criteria" in got[0], got
+
+    data = json.loads(good)
+    del data["sc_coverage"]["2.1.2"]
+    f.write_text(json.dumps(data), encoding="utf-8")
+    merge(ws)
+    one(ws, "4", "no status for 1 of its 23 criteria (2.1.2)")
+
+    f.write_text(good, encoding="utf-8")                                       # edited after the merge
+    one(ws, "4", "older than operate.json")
+    f.write_text(good[:-20], encoding="utf-8")                                 # cut off mid-file
+    merge(ws)
+    one(ws, "4", "findings/operate.json is not valid JSON")
+
+    data = json.loads(good)
+    data["findings"] = {"KBD-001": data["findings"][0]}                        # an object: the merge would read it as no findings
+    f.write_text(json.dumps(data), encoding="utf-8")
+    merge(ws)
+    assert any('has no "findings" list' in g for g in gaps(ws, "4")), gaps(ws, "4")
+
+
+def test_phase_5_wants_the_personas_of_the_mode_and_a_merge_after_them():
+    ws = workspace()
+    through_phase_3(ws)
+    through_phase_4(ws)
+    got = gaps(ws, "5")
+    assert len(got) == 3 and "screen-reader-user" in got[0] and "0 reported" in got[1] and "framework-maximizer.json is missing" in got[2], got
+    through_phase_5(ws)
+    assert gaps(ws, "5") == [], gaps(ws, "5")
+    (ws / "personas" / "low-vision-user.md").write_text("", encoding="utf-8")
+    assert any("plus one other" in g for g in gaps(ws, "5")), "an empty persona file counts as a report"
+    through_phase_5(ws)
+    touch_after(ws / "personas" / "low-vision-user.md", ws / "findings" / "_merged.json")
+    one(ws, "5", "older than low-vision-user.md")
+    through_phase_5(ws)                                                        # writes the files anew, then merges
+    m = ws / "briefs" / "_agents.json"
+    m.write_text(m.read_text(encoding="utf-8").replace('"mini"', '"lean"'), encoding="utf-8")
+    one(ws, "5", "no persona report from motor-voice-user, cognitive-user")
+
+
+def test_phase_6_wants_a_current_draft_and_a_report_that_passes_the_linter():
+    ws = workspace()
+    through_phase_3(ws)
+    through_phase_4(ws)
+    through_phase_5(ws)
+    assert len(gaps(ws, "6")) == 3, gaps(ws, "6")                    # no draft, no ids, no report
+    script("render_report_parts.py", ws, "--lang", "en")
+    one(ws, "6", "REPORT.md is missing")
+    draft = (ws / "REPORT.draft.md").read_text(encoding="utf-8")
+    (ws / "REPORT.md").write_text(draft, encoding="utf-8")
+    one(ws, "6", "REPORT.md has")
+    (ws / "REPORT.md").write_text(re.sub(r"<!-- WRITE:.*?-->", "Written.", draft.split("-->", 1)[1].lstrip(), flags=re.S), encoding="utf-8")
+    assert gaps(ws, "6") == [], gaps(ws, "6")
+    (ws / "previous").mkdir()
+    one(ws, "6", "delta.md is missing")
+    (ws / "delta.md").write_text("# delta\n", encoding="utf-8")
+    touch_after(ws / "findings" / "_merged.json", ws / "REPORT.draft.md")
+    one(ws, "6", "REPORT.draft.md is older")
+
+
+def test_exit_codes():
+    ws = workspace()
+    cli = [sys.executable, str(HERE / "check_phase.py")]
+    r = subprocess.run([*cli, str(ws), "3"], capture_output=True, text=True)
+    assert r.returncode == 1 and "phase 3 is not complete: 5 to resolve" in r.stdout, r.stdout
+    through_phase_3(ws)
+    r = subprocess.run([*cli, str(ws), "3"], capture_output=True, text=True)
+    assert r.returncode == 0 and r.stdout.strip() == "phase 3 complete", r.stdout
+    assert subprocess.run([*cli, str(ws / "nowhere"), "3"], capture_output=True, text=True).returncode == 2
+
+
+if __name__ == "__main__":
+    start = time.time()
+    tests = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
+    for t in tests:
+        t()
+        print(f"ok  {t.__name__}")
+    print(f"{len(tests)} checks passed in {time.time() - start:.1f}s")
