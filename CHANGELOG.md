@@ -2,6 +2,10 @@
 
 Rounds of review and real runs, newest first. Each round changed what the report says, not only how it is phrased.
 
+## 1.1.1 (2026-11-16)
+
+The README only; no script and no instruction changed. A read of the whole file against the scripts, `SKILL.md` and the last eval run found ten places that no longer matched (#28). Two were plain errors: the grading command's path left out the `site` folder the audit normally runs in, and "pass one run to halve it" where three runs to one is a third. The rest had gone stale: how long a run takes, the Python version, what happens in a run with nobody to answer, the reason given for the two sets of cost figures, the link to Claude Code, and a repository layout without the exporter, the grader and the self-checks.
+
 ## 1.1.0 (2026-11-16)
 
 Everything merged after 1.0, with the pull request it came in. The numbers in the README are those of the last eval run of 16 November, described in round 13.
