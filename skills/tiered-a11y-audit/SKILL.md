@@ -71,6 +71,7 @@ Create `.a11y-audit/` in the repo root. It holds screenshots (easily several MB)
 ├── colour-pairs.md         # colour tokens and failing fg/bg pairs (Phase 3)
 ├── aria-digest.md          # per view: landmarks, headings, nameless controls (Phase 3, runtime only)
 ├── briefs/<agent>.md       # one briefing file per subagent (Phase 3)
+├── briefs/_agents.json     # generated: the agents of this run, read by the phase check (Phase 3)
 ├── REPORT.draft.md         # generated: the whole report with gaps marked WRITE (Phase 6)
 ├── report-parts.md         # generated: the tables alone (Phase 6)
 ├── findings/<agent>.json   # one file per expert agent (Phase 4)
@@ -85,6 +86,16 @@ Create `.a11y-audit/` in the repo root. It holds screenshots (easily several MB)
 ```
 
 `SKILL_DIR` below means the directory containing this SKILL.md. Resolve it to an absolute path (e.g. `~/.claude/skills/tiered-a11y-audit` or the plugin's install path) and quote it everywhere — a plugin path can contain spaces, and subagents cannot guess it.
+
+## Phase checks
+
+Phases 3, 4, 5 and 6 each end with the same command, with the number of the phase you are finishing:
+
+```
+python3 "SKILL_DIR"/scripts/check_phase.py <repo>/.a11y-audit <phase>
+```
+
+It looks at the files the phase should have left and prints one line per gap: an expert that wrote no file or an unreadable one, a criterion without a status, a merge older than the findings it should contain, briefs built before the stack profile changed, a report that fails the linter. Do not start the next phase until it prints `phase <n> complete`. Close a gap by doing the missing work (re-run the script it names, send the agent back for what it left out), never by writing a file by hand to satisfy the check. It checks that the work is there, not that a finding is true: verification stays yours. It also cannot tell this run's files from an earlier run's, so in a re-audit everything of the earlier audit has to be out of the workspace before Phase 3. A focused review has no phases 3 to 6 and so no check.
 
 ## Phase 0 — Orient (no questions yet)
 
@@ -143,6 +154,8 @@ The gitignore line is the one edit this skill makes to a repo, only with this pe
    ```
    python3 "SKILL_DIR"/scripts/build_briefs.py "SKILL_DIR" <repo>/.a11y-audit --playbook <sections> [--lean | --mini]
    ```
+   Each expert brief ends with the start of that agent's findings file: its name, its lenses and every criterion it owns, each still to be given a status. Build the briefs again whenever the stack profile changes, because they carry a copy of it.
+6. Run the phase check for phase 3 before spawning anyone.
 
 ## Phase 4 — Experts, merge, dedupe, verify
 
@@ -170,7 +183,8 @@ Rules: repo READ-ONLY (no edits, no state-changing git); runtime READ-ONLY (navi
 open, type; never submit/create/delete) <unless: disposable instance, allowed: …>;
 helper scripts only inside the scratch dir named in the profile (Node resolves
 imports from the script's own directory); don't npm install. Work in English.
-Stay within ~40 tool calls. Write "<repo>/.a11y-audit/findings/<agent>.json" and
+Stay within ~40 tool calls. Write "<repo>/.a11y-audit/findings/<agent>.json", starting
+from the JSON at the end of your brief (a status for every criterion listed there), and
 reply with at most 8 lines (counts per severity, top 3 issues).
 ```
 
@@ -188,7 +202,7 @@ python3 "SKILL_DIR"/scripts/merge_findings.py <repo>/.a11y-audit --ownership "SK
 
 It writes `_merged.json`, `_merged.md` (one line per finding plus root-cause clusters — findings citing the same lines), and `coverage.md`; derives tiers from `visual_impact`; flags schema problems and owner conflicts. It also checks every finding's claims against what a script can look up: the cited file, lines and snippet exist (pass `--repo <dir>` when the audit scope is a subdirectory), the criterion is a level A or AA one with its name and level taken from the ownership table, and stated contrast ratios are recomputed and corrected. Everything that does not hold is listed under "Problems to resolve" at the end of `_merged.md`. Resolve that list first, by fixing the findings file or dropping the finding: a citation that does not exist is not evidence, and a finding with only a triple-A criterion or none at all is invisible to the coverage matrix. Then decide the duplicates: for each cluster pick the canonical finding (the pattern owner's, see `references/wcag-ownership.md`), write `findings/_dedupe.json` — `{"DYN-004": ["KBD-003", "SEM-010"], …}` — and re-run the script. Expect a third to a half of raw findings to collapse.
 
-**4c — verify the top before anyone builds on it.** Open the cited code or page for every blocker and critical finding (there are rarely more than ten). Check them against the false-positive list in `agents/experts/_protocol.md`. Drop or downgrade what doesn't hold up. Anything you find yourself while verifying goes into `findings/orchestrator.json` (prefix `ORC`, same schema) — not into the report by hand. Re-run the script. Personas and the maximizer must not inherit a false positive.
+**4c — verify the top before anyone builds on it.** Open the cited code or page for every blocker and critical finding (there are rarely more than ten). Check them against the false-positive list in `agents/experts/_protocol.md`. Drop or downgrade what doesn't hold up. Anything you find yourself while verifying goes into `findings/orchestrator.json` (prefix `ORC`, same schema) — not into the report by hand. Re-run the script, then run the phase check for phase 4. Personas and the maximizer must not inherit a false positive.
 
 ## Phase 5 — Personas and framework-maximizer, in parallel
 
@@ -209,7 +223,7 @@ Spawn, **in one message**: the personas and `agents/experts/framework-maximizer.
 
 - Framework-maximizer: attaches leverage points to existing findings (which token, base component, hook or config fixes several at once) and files new findings only for tooling, CI, suppressions and unused platform features.
 
-One progress line when they start, none in between. When all are done, run the merge script once more. It links the persona verdicts, pulls in their new `PER-*` findings (normalised, schema deviations flagged), attaches the maximizer's leverage entries to their targets and lists them ranked (that list is the structural-advice section; the entries are not findings and never go into `_dedupe.json`), and applies the severity floor: a key flow **failed** → the findings it names become blocker; **only with help** → critical. Coverage statuses that rest only on persona findings show as "fail (unverified)" until Phase 6 confirms them.
+One progress line when they start, none in between. When all are done, run the merge script once more. It links the persona verdicts, pulls in their new `PER-*` findings (normalised, schema deviations flagged), attaches the maximizer's leverage entries to their targets and lists them ranked (that list is the structural-advice section; the entries are not findings and never go into `_dedupe.json`), and applies the severity floor: a key flow **failed** → the findings it names become blocker; **only with help** → critical. Coverage statuses that rest only on persona findings show as "fail (unverified)" until Phase 6 confirms them. Then run the phase check for phase 5.
 
 ## Phase 6 — Synthesis and report
 
@@ -226,7 +240,7 @@ One progress line when they start, none in between. When all are done, run the m
    ```
    python3 "SKILL_DIR"/scripts/lint_report.py <repo>/.a11y-audit/REPORT.md --workspace <repo>/.a11y-audit
    ```
-   It lists, with line numbers, every gap still marked `WRITE`, every report ID that was dropped, duplicated or invented, and every break of the read-aloud rules above that a script can decide: table width and empty cells, a table without an announcing sentence, skipped heading levels, nested lists, emoji, arrows, slashes in running text, ratios written with a colon, long bold. Fix what it lists and run it again. The report is done when it exits 0, not before; do not reply to the user with a report that fails it.
+   It lists, with line numbers, every gap still marked `WRITE`, every report ID that was dropped, duplicated or invented, and every break of the read-aloud rules above that a script can decide: table width and empty cells, a table without an announcing sentence, skipped heading levels, nested lists, emoji, arrows, slashes in running text, ratios written with a colon, long bold. Fix what it lists and run it again. The report is done when it exits 0, not before; do not reply to the user with a report that fails it. Close with the phase check for phase 6, which also confirms that the draft was rendered after the last merge and that a re-audit has its delta.
 7. **Reply** in at most ~15 plain lines, in this order: the score in words ("now 5 out of 10; after tier 1: 7; after tiers 1 and 2: 8; ceiling 9"), any blocker or `affects_all_users` finding in one line each, the top 5 actions as a numbered list of one line each, the counts per tier in one sentence, the report path, and the method caveat in one sentence. No table, no symbols. If the user uses a screen reader or asked for brevity, stop after the top 5 and offer the rest on request.
 
 ## Phase 7 — Wrap up and offer next steps
@@ -248,7 +262,8 @@ Exports, on request or when the context calls for them (a team that works from t
 - `scripts/scan_patterns.py` — pattern inventory: every a11y grep over templates, styles and UI scripts, with locations.
 - `scripts/extract_colors.py` — colour tokens per scheme and failing foreground/background pairs.
 - `scripts/aria_digest.py` — per-view digest of the accessibility trees: landmarks, headings, nameless controls, duplicate names.
-- `scripts/build_briefs.py` — one briefing file per subagent.
+- `scripts/build_briefs.py` — one briefing file per subagent, each expert's with the start of its findings file, and the list of agents for the phase check.
+- `scripts/check_phase.py` — the phase check: what phases 3, 4, 5 and 6 must have left before the next one starts.
 - `scripts/merge_findings.py` — merges findings, derives tiers, clusters root causes, links persona verdicts, builds the coverage matrix, re-audit delta.
 - `scripts/render_report_parts.py` — generates the draft report (every table, finding block and appendix, with consistent report IDs and the gaps for prose marked).
 - `scripts/lint_report.py` — checks the finished report: no gap left, every report ID present once, the read-aloud rules kept.

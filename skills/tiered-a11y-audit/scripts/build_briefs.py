@@ -7,6 +7,9 @@ Writes .a11y-audit/briefs/<agent>.md for every expert and persona: protocol + ag
 tiering + ownership + stack profile + only the requested playbook sections. --lean writes four merged expert
 briefs (structure-content, keyboard-dynamic, visual-perception, forms-input); --mini writes two (perceive, operate).
 Saves six to twelve tool calls per agent and keeps agents from reading the whole playbook.
+
+Each expert brief ends with the start of its findings file: its name, its lenses and every criterion it owns.
+briefs/_agents.json lists the agents of this run; check_phase.py reads it to know whose output to expect.
 """
 from __future__ import annotations
 
@@ -15,6 +18,9 @@ import json
 import re
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from merge_findings import parse_ownership  # noqa: E402
 
 EXPERTS = ["semantics-structure", "keyboard-focus", "visual-perception", "forms-input", "dynamic-content", "content-media"]
 LEAN = {"structure-content": ["semantics-structure", "content-media"], "keyboard-dynamic": ["keyboard-focus", "dynamic-content"],
@@ -32,6 +38,19 @@ def playbook_sections(text: str, wanted):
         if parts[i] in wanted:
             out.append(f"## {parts[i]}. " + parts[i + 1])
     return "\n".join(out)
+
+
+def skeleton(brief: str, lenses: list, owners: dict) -> str:
+    """The start of the agent's findings file, so it fills in statuses instead of recalling which criteria are its own."""
+    own = [sc for sc, meta in owners.items() if meta["owner"] in lenses]
+    cov = ",\n".join(f'    "{sc}": {{"status": "TODO", "note": ""}}' for sc in own)
+    return (f"# Start of your findings file\n\nBegin `findings/{brief}.json` from the JSON below. It lists the {len(own)} criteria you own. "
+            "Replace every TODO: a status is one of pass, fail (add \"findings\": [ids]), not-tested or n/a, the last two with the reason "
+            "in the note. The orchestrator's phase check refuses a file in which a criterion is missing, still says TODO, or is not-tested or n/a without a note.\n\n```json\n"
+            f'{{\n  "agent": "{brief}",\n  "lenses": {json.dumps(lenses)},\n'
+            '  "coverage": {"method": "TODO", "examined": [], "not_examined": [], "notes": ""},\n'
+            '  "positives": [],\n  "cross_lens_notes": [],\n'
+            f'  "sc_coverage": {{\n{cov}\n  }},\n  "findings": []\n}}\n```')
 
 
 def main():
@@ -58,6 +77,7 @@ def main():
     expert_proto = rd(sd / "agents" / "experts" / "_protocol.md")
     persona_proto = rd(sd / "agents" / "personas" / "_protocol.md")
     agents = MINI if a.mini else LEAN if a.lean else {e: [e] for e in EXPERTS}
+    owners = parse_ownership(refs / "wcag-ownership.md")
     for brief, lenses in agents.items():
         body = "\n\n".join(rd(sd / "agents" / "experts" / f"{l}.md") for l in lenses)
         if len(lenses) > 1:
@@ -66,7 +86,7 @@ def main():
                     f"use the ID prefixes of whichever lens a finding belongs to.\n\n") + body
         (out / f"{brief}.md").write_text("\n\n---\n\n".join([
             f"# Briefing: {brief}", expert_proto, body, common_refs, "# Stack profile\n\n" + profile + extras,
-            "# Framework playbook (relevant sections)\n\n" + pb]), encoding="utf-8")
+            "# Framework playbook (relevant sections)\n\n" + pb, skeleton(brief, lenses, owners)]), encoding="utf-8")
     (out / "framework-maximizer.md").write_text("\n\n---\n\n".join([
         "# Briefing: framework-maximizer", expert_proto, rd(sd / "agents" / "experts" / "framework-maximizer.md"),
         common_refs, "# Stack profile\n\n" + profile + extras, "# Framework playbook (relevant sections)\n\n" + pb]), encoding="utf-8")
@@ -74,6 +94,8 @@ def main():
         (out / f"{p}.md").write_text("\n\n---\n\n".join([
             f"# Briefing: {p}", persona_proto, rd(sd / "agents" / "personas" / f"{p}.md"), rd(refs / "finding-schema.md"),
             "# Stack profile\n\n" + profile + extras]), encoding="utf-8")
+    (out / "_agents.json").write_text(json.dumps({"mode": "mini" if a.mini else "lean" if a.lean else "full", "experts": agents,
+                                                  "maximizer": "framework-maximizer", "personas": PERSONAS}, indent=2), encoding="utf-8")
     print(f"briefs written to {out} ({len(agents)} expert, 1 maximizer, {len(PERSONAS)} persona); playbook sections {sorted(wanted)}")
     return 0
 
