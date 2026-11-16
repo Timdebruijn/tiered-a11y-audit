@@ -105,7 +105,7 @@ Everything here is cheap and needs no input, so do it before asking anything.
    ```
    python3 "SKILL_DIR"/scripts/preflight.py <repo-root>
    ```
-   Its first lines answer what Phase 1 needs: whether this is a git repository and whether `.a11y-audit/` is ignored ("yes" means every kind of file in it, then skip question 1; "partly" means ask it), whether a finished earlier audit is in the workspace (then this is a re-audit) or an unfinished run (then go on with it, unless the user wants to begin again), the number of project-owned UI files and the audit size that suggests, the run scripts in `package.json`, whether node and an installed browser are available, and a scratch directory outside the repository to offer. Below that comes the detector's output: frameworks, UI/chart/animation libraries, styling, routing (or its absence), i18n, a11y tooling, suppressed a11y lint rules, UIs embedded in source strings, a CSP, and infra templates it ignored.
+   Its first lines answer what Phase 1 needs: whether this is a git repository and whether `.a11y-audit/` is ignored ("yes" means every kind of file in it, then skip question 1; "partly" means ask it), whether a finished earlier audit is in the workspace (then this is a re-audit) or an unfinished run (then go on with it, unless the user wants to begin again), the number of project-owned UI files and the audit size that suggests, the run scripts in `package.json`, whether node and an installed browser are available, a scratch directory outside the repository to offer, and whether a person is there to answer questions. Below that comes the detector's output: frameworks, UI/chart/animation libraries, styling, routing (or its absence), i18n, a11y tooling, suppressed a11y lint rules, UIs embedded in source strings, a CSP, and infra templates it ignored.
 2. From that output decide: no UI at all → stop and ask what to audit; the "Scope" line gives project-owned UI files (vendored themes and build output excluded): ≤ 10 → mini candidate (confirm with the pattern inventory at the start of Phase 2), ≤ 25 → lean, otherwise full. Packages listed under "Found only in vendored code" are not the project's stack; read the playbook for the generator or framework the project actually uses. Note the package scripts / compose files / SSG commands that could start a dev server, and whether a browser tool is available in this session (Playwright via a scratch dir, a Playwright or Chrome MCP, or nothing).
 
 ## Phase 1 — One message to the user
@@ -128,6 +128,16 @@ python3 "SKILL_DIR"/scripts/preflight.py <repo-root> --start [--ignore all|repor
 ```
 
 It creates `.a11y-audit/`, writes `stack-detect.md` and appends the ignore lines once, leaving the rest of `.gitignore` byte for byte as it was. A finished earlier audit (a workspace with a `REPORT.md`) is moved as a whole into `.a11y-audit/previous/`, so that none of its files is mistaken for this run's output. Nothing is deleted: an older `previous/` is kept as `previous-<timestamp>/`, and a translated labels file stays where it is. A workspace without a `REPORT.md` counts as a run in progress and is left alone, so running the command again after losing your place is harmless; add `--fresh` only when the user wants to begin again. Read what it prints: it refuses a workspace that is a file or a symbolic link, it does not write through a symlinked `.gitignore`, and it does not add ignore lines that cannot work (for example "keep the report trackable" while another line ignores the whole folder). In each of those cases it says what the user has to decide.
+
+**When nobody can answer.** A scripted run, a pipeline or an evaluation has no person on the other end; waiting there ends the audit after its first message. The preflight says which case you are in ("Someone to answer questions"). On "no", or when the request itself says to go on without asking, your next message is still the Phase 1 message, in the same short numbered shape, written as the list of what you take instead of a list of questions. Nobody reads it while you work, but it is the only record of what the audit assumed, so it is not skipped. Then go straight on. Take for each point the option that needs no permission:
+
+- `.gitignore`: leave it alone. Say that `.a11y-audit/` is not ignored and give the two lines that would ignore it; run `--start` without `--ignore`.
+- Runtime: the URL the request gave, otherwise static only. Do not start the project's dev server.
+- Installing: nothing.
+- The running app: read-only.
+- Key flows: the ones you proposed.
+
+Say in the method section of the report that nobody was there to confirm these. On "yes" and on "unknown", ask and wait: taking a silence for a yes is how a repository gets edited without consent.
 
 ## Phase 2 — Recon and runtime
 

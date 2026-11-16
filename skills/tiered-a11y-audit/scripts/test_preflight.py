@@ -29,13 +29,16 @@ def repo(git=True, ignore=None):
     return root
 
 
-def run(root, *args, path=None):
+def run(root, *args, path=None, attended="1"):
     # The answer must come from the repository alone: no global or system git config, no global ignore file,
     # and no git repository above the temp dir.
     env = {**os.environ, "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1", "XDG_CONFIG_HOME": str(EMPTY),
            "GIT_CEILING_DIRECTORIES": str(Path(root).parent)}
     if path is not None:
         env["PATH"] = path
+    env.pop("CLAUDE_CODE_SESSION_ATTENDED", None)           # this test may itself run inside an attended or unattended session
+    if attended is not None:
+        env["CLAUDE_CODE_SESSION_ATTENDED"] = attended
     return subprocess.run([sys.executable, str(HERE / "preflight.py"), str(root), *args], capture_output=True, text=True, env=env)
 
 
@@ -71,6 +74,16 @@ def test_phase_0_reports_and_writes_nothing():
 def test_a_git_that_cannot_answer_is_not_reported_as_no_repository():
     out = run(repo(), path=str(EMPTY)).stdout
     assert "- Git repository: unknown (git is not installed)" in out and "ignored by git: unknown" in out, out[:400]
+
+
+def test_an_unattended_session_is_told_not_to_wait():
+    root = repo()
+    yes, no, unknown = (run(root, attended=a).stdout for a in ("1", "0", None))
+    assert "- Someone to answer questions: yes: ask the Phase 1 questions and wait" in yes and "After the user's answer, run this script again with --start." in yes
+    assert "- Someone to answer questions: no, this session is unattended. Your next message is the Phase 1 message" in no and "go on without waiting" in no
+    assert "without --ignore" in no and "After the user's answer" not in no, "an unattended run was still told to wait for an answer"
+    assert "- Someone to answer questions: unknown: ask the Phase 1 questions and wait" in unknown and "After the user's answer" in unknown
+    assert "unknown" in line(run(root, attended="maybe").stdout, "Someone to answer questions"), "an unexpected value must not read as yes or no"
 
 
 def test_ignored_means_every_kind_of_file_in_the_workspace():

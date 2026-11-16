@@ -8,7 +8,7 @@ Without --start nothing is written anywhere. It prints whether this is a git rep
 .a11y-audit/ is ignored (asked of git for three kinds of file in it, so "yes" means all of them), whether a
 finished earlier audit or an unfinished run is in the workspace, which audit size the number of
 project-owned UI files suggests, which run scripts and tools are available, a scratch directory outside the
-repository to offer, and then the full output of detect_stack.py.
+repository to offer, whether a person is there to answer questions, and then the full output of detect_stack.py.
 
 --start is for after the user's answer. It creates .a11y-audit/ and writes stack-detect.md. A finished
 earlier audit (one with a REPORT.md) is moved as a whole into .a11y-audit/previous/; an older previous/ is
@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import io
+import os
 import shutil
 import subprocess
 import sys
@@ -97,6 +98,12 @@ EARLIER = {
 }
 
 
+def someone_to_answer() -> str:
+    """Whether a person is on the other end. Claude Code sets CLAUDE_CODE_SESSION_ATTENDED to 1 in an interactive session
+    and to 0 in print mode (measured on 2.1.319; the variable is not documented). Anything else: this script cannot tell."""
+    return {"1": "yes", "0": "no"}.get(os.environ.get("CLAUDE_CODE_SESSION_ATTENDED", ""), "unknown")
+
+
 def mode_for(ui_files: int) -> str:
     if ui_files == 0:
         return "none: no user interface found, ask what to audit"
@@ -116,6 +123,13 @@ def report(root: Path, r: dict) -> str:
     in_git = git_state(root)
     ignored = ignore_state(root) if in_git == "yes" else "not applicable" if in_git == "no" else "unknown"
     scripts = sorted({s for p in r["packages"] for s in p["scripts"] if s in RUN_SCRIPTS})
+    answer = someone_to_answer()
+    reach = {"yes": "yes: ask the Phase 1 questions and wait for the answer",
+             "no": "no, this session is unattended. Your next message is the Phase 1 message, written as the list of what you take "
+                   "(for each question the option that needs no permission): it is the only record of what was assumed. Then go on without waiting",
+             "unknown": "unknown: ask the Phase 1 questions and wait, unless the request itself says to go on without asking"}[answer]
+    then = ("Go on with --start once the Phase 1 message is posted, without --ignore: nobody agreed to an edit of .gitignore."
+            if answer == "no" else "After the user's answer, run this script again with --start.")
     browser = next((b for b in BROWSERS if shutil.which(b)), None) or next((b for b in MAC_BROWSERS if Path(b).exists()), None)
     lines = [
         f"# Preflight: {root}", "",
@@ -128,7 +142,8 @@ def report(root: Path, r: dict) -> str:
         f"- node: {shutil.which('node') or 'not found'}",
         f"- Installed browser for the scan: {browser or 'not found (Playwright would download one, about 150 MB)'}",
         f"- Scratch directory to offer, outside the repository: {Path(tempfile.gettempdir()) / 'a11y-scan'}",
-        "- Nothing was written. After the user's answer, run this script again with --start.", "",
+        f"- Someone to answer questions: {reach}",
+        f"- Nothing was written. {then}", "",
     ]
     return "\n".join(lines) + "\n" + detector_text(r)
 
