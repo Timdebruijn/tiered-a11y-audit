@@ -101,7 +101,7 @@ def mode_for(ui_files: int) -> str:
     if ui_files == 0:
         return "none: no user interface found, ask what to audit"
     if ui_files <= 10:
-        return "mini candidate (confirm with the pattern inventory in Phase 3: few forms and widgets)"
+        return "mini candidate (confirm with the pattern inventory in Phase 2: few forms and widgets)"
     return "lean" if ui_files <= 25 else "full"
 
 

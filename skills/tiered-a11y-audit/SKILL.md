@@ -1,6 +1,6 @@
 ---
 name: tiered-a11y-audit
-description: Full accessibility (a11y) audit of any frontend repository — React, Next.js, Vue, Nuxt, Angular, Svelte, Astro, web components, server-rendered templates (Django, Rails, Laravel, Hugo, Blazor…), React Native, Flutter, or UIs embedded as strings in firmware/source code — producing a three-tier report (1. invisible fixes you can ship today, 2. small non-shocking visual tweaks, 3. everything needed for a "10/10"). Uses parallel expert subagents plus persona subagents simulating people who rely on assistive tech. Use this skill whenever the user asks about accessibility, toegankelijkheid, a11y, WCAG, EN 301 549, European Accessibility Act, a toegankelijkheidsrapport or -verklaring, screen reader support, contrast, keyboard navigation, or wants to know how inclusive/usable their app or site is — even if they only say "check my site for a11y" or "hoe toegankelijk is dit".
+description: Accessibility audit of a frontend repository, or a focused accessibility review of one component, page, form, modal or pull request. For React, Next.js, Vue, Nuxt, Angular, Svelte, Astro, web components, server-rendered templates (Django, Rails, Laravel, Hugo, Blazor), React Native, Flutter, and UIs embedded as strings in firmware or source code. A full audit gives a three-tier report (1. invisible fixes you can ship today, 2. small non-shocking visual tweaks, 3. everything needed for a "10/10") from parallel expert subagents and persona subagents that simulate assistive-tech users; a focused review gives a short three-tier answer. Use whenever the user asks about accessibility, toegankelijkheid, a11y, WCAG, EN 301 549, European Accessibility Act, a toegankelijkheidsrapport or -verklaring, screen reader support, contrast, keyboard navigation, or how inclusive or usable something is, also for "check my site for a11y", "hoe toegankelijk is dit", "is dit formulier toegankelijk", "review this PR for a11y".
 ---
 
 # Accessibility audit — three-tier report
@@ -65,10 +65,10 @@ Create `.a11y-audit/` in the repo root. It holds screenshots (easily several MB)
 ```
 .a11y-audit/
 ├── stack-detect.md         # detector output, written by preflight.py --start (Phase 1)
-├── stack-profile.md        # shared brief for all agents (end of Phase 3)
+├── stack-profile.md        # shared brief for all agents (started in Phase 2, complete at the end of Phase 3)
 ├── automated/              # scan output, screenshots, aria trees (Phase 3)
-├── pattern-inventory.md    # every a11y grep, done once by script (Phase 3)
-├── colour-pairs.md         # colour tokens and failing fg/bg pairs (Phase 3)
+├── pattern-inventory.md    # every a11y grep, done once by script (Phase 2)
+├── colour-pairs.md         # colour tokens and failing fg/bg pairs (Phase 2)
 ├── aria-digest.md          # per view: landmarks, headings, nameless controls (Phase 3, runtime only)
 ├── briefs/<agent>.md       # one briefing file per subagent (Phase 3)
 ├── briefs/_agents.json     # generated: the agents of this run, read by the phase check (Phase 3)
@@ -106,14 +106,14 @@ Everything here is cheap and needs no input, so do it before asking anything.
    python3 "SKILL_DIR"/scripts/preflight.py <repo-root>
    ```
    Its first lines answer what Phase 1 needs: whether this is a git repository and whether `.a11y-audit/` is ignored ("yes" means every kind of file in it, then skip question 1; "partly" means ask it), whether a finished earlier audit is in the workspace (then this is a re-audit) or an unfinished run (then go on with it, unless the user wants to begin again), the number of project-owned UI files and the audit size that suggests, the run scripts in `package.json`, whether node and an installed browser are available, and a scratch directory outside the repository to offer. Below that comes the detector's output: frameworks, UI/chart/animation libraries, styling, routing (or its absence), i18n, a11y tooling, suppressed a11y lint rules, UIs embedded in source strings, a CSP, and infra templates it ignored.
-2. From that output decide: no UI at all → stop and ask what to audit; the "Scope" line gives project-owned UI files (vendored themes and build output excluded): ≤ 10 → mini candidate (confirm after `scan_patterns.py` in Phase 3 shows few interactive widgets), ≤ 25 → lean, otherwise full. Packages listed under "Found only in vendored code" are not the project's stack; read the playbook for the generator or framework the project actually uses. Note the package scripts / compose files / SSG commands that could start a dev server, and whether a browser tool is available in this session (Playwright via a scratch dir, a Playwright or Chrome MCP, or nothing).
+2. From that output decide: no UI at all → stop and ask what to audit; the "Scope" line gives project-owned UI files (vendored themes and build output excluded): ≤ 10 → mini candidate (confirm with the pattern inventory at the start of Phase 2), ≤ 25 → lean, otherwise full. Packages listed under "Found only in vendored code" are not the project's stack; read the playbook for the generator or framework the project actually uses. Note the package scripts / compose files / SSG commands that could start a dev server, and whether a browser tool is available in this session (Playwright via a scratch dir, a Playwright or Chrome MCP, or nothing).
 
 ## Phase 1 — One message to the user
 
 One message, at most five numbered questions, one line each, each with its default, so that "ok" answers everything. Skip questions the user already answered. Keep the whole message under ~12 lines. Cost line from three real runs: full is 13–15 subagents and 1–1.5 M subagent tokens; lean about 10 subagents and 0.5–0.7 M; mini about 5 and 0.3 M; wall-clock 20–45 minutes for all of them (the orchestrator's own verification takes as long as the agents). Quote the mode you actually propose, not the full-audit numbers. Example (translate into the user's language):
 
 ```
-I found a React + Vite app with 18 UI files; a lean audit fits (about 7 agents, 15–20 minutes). Questions, defaults in brackets, "ok" accepts all:
+I found a React + Vite app with 18 UI files; a lean audit fits (about 10 subagents, 20 to 45 minutes). Questions, defaults in brackets, "ok" accepts all:
 1. Add .a11y-audit/ to .gitignore? It holds screenshots and code snippets. [yes, ignore all; or: keep REPORT.md trackable]
 2. Runtime: start `npm run dev` myself? [yes; or give me a URL; or static only]
 3. Install Playwright + axe in a scratch folder outside the repo? Chrome is installed, so no browser download. [yes]
@@ -131,12 +131,18 @@ It creates `.a11y-audit/`, writes `stack-detect.md` and appends the ignore lines
 
 ## Phase 2 — Recon and runtime
 
-1. Read the detected stacks' sections of `references/framework-playbooks.md` — nothing else.
-2. Establish what the team may edit: `CLAUDE.md`, contribution docs, design docs, `.gitmodules`, vendor and theme folders. Write the writable directories, the off-limits ones and any policy ("never copy theme templates") into the stack profile — it decides `fix.ownership` for every finding. If the repo documents its own accessibility status (a "0 violations" note, a contrast table, a statement), treat it as a claim to re-measure and report the delta; the owner of such a gate needs to know whether it exists.
-3. Locate the leverage points with paths: design tokens/theme and global CSS (focus styles, motion, forced colours); app shell / root layout (`<html lang>`, `<title>`, landmarks, skip link); router or view-switching code; shared components (Button, Link, Icon, Input/Field, Modal, Menu, Tabs, Toast, Table); forms layer (library, validation, error rendering); any announcer/live region; tests, lint, CI.
-4. Pick the key flows (3–7): home + primary navigation, the primary task, a form or authentication flow, a content-heavy view, a widget-heavy view. Map each to routes/views/components. For a component library without pages, the flows are the stories/demo pages of the 5–8 most-used components.
-5. If agreed, start the dev server as a background process from the repo root, wait until the URL answers (fetch it), and record the command, URL and PID. If it fails, fall back to static-only and say so later in the method section.
-6. Create the scratch directory (the session scratchpad if the harness has one, else the one the preflight offered) and, if agreed, install `playwright` and `@axe-core/playwright` there (`references/tooling.md`). Copy `axe_scan.mjs` into it: Node resolves ESM imports from the script's own directory, so a script that stays in the skill folder cannot find the scratch `node_modules`. This directory is the one place for every helper script of the whole audit.
+1. Start the two things every later step leans on. Create `.a11y-audit/stack-profile.md` now, in the shape of `references/stack-profile-template.md`, and fill each line in as the steps below produce the fact, instead of reconstructing it at the end of Phase 3. And run the static scans, which need no runtime:
+   ```
+   python3 "SKILL_DIR"/scripts/scan_patterns.py <repo> > <repo>/.a11y-audit/pattern-inventory.md
+   python3 "SKILL_DIR"/scripts/extract_colors.py <repo> > <repo>/.a11y-audit/colour-pairs.md
+   ```
+   The inventory's summary table settles the audit size. Read four rows: forms, form controls, modal-like classes, and key handlers together with click handlers on non-interactive elements. A mini candidate with a form beyond one search box, or with more than two interactive widgets, becomes lean. If that changes what you told the user in Phase 1, say so in one line before going on. The per-file table of headings, titles and languages, and the locations listed under each pattern, are also where steps 4 and 5 start.
+2. Read the detected stacks' sections of `references/framework-playbooks.md` — nothing else.
+3. Establish what the team may edit: `CLAUDE.md`, contribution docs, design docs, `.gitmodules`, vendor and theme folders. Write the writable directories, the off-limits ones and any policy ("never copy theme templates") into the stack profile — it decides `fix.ownership` for every finding. If the repo documents its own accessibility status (a "0 violations" note, a contrast table, a statement), treat it as a claim to re-measure and report the delta; the owner of such a gate needs to know whether it exists.
+4. Locate the leverage points with paths: design tokens/theme and global CSS (focus styles, motion, forced colours); app shell / root layout (`<html lang>`, `<title>`, landmarks, skip link); router or view-switching code; shared components (Button, Link, Icon, Input/Field, Modal, Menu, Tabs, Toast, Table); forms layer (library, validation, error rendering); any announcer/live region; tests, lint, CI.
+5. Pick the key flows (3–7): home + primary navigation, the primary task, a form or authentication flow, a content-heavy view, a widget-heavy view. Map each to routes/views/components. For a component library without pages, the flows are the stories/demo pages of the 5–8 most-used components.
+6. If agreed, start the dev server as a background process from the repo root, wait until the URL answers (fetch it), and record the command, URL and PID. If it fails, fall back to static-only and say so later in the method section.
+7. Create the scratch directory (the session scratchpad if the harness has one, else the one the preflight offered) and, if agreed, install `playwright` and `@axe-core/playwright` there (`references/tooling.md`). Copy `axe_scan.mjs` into it: Node resolves ESM imports from the script's own directory, so a script that stays in the skill folder cannot find the scratch `node_modules`. This directory is the one place for every helper script of the whole audit.
 
 ## Phase 3 — Automated baseline, then the shared brief
 
@@ -146,19 +152,29 @@ It creates `.a11y-audit/`, writes `stack-detect.md` and appends the ignore lines
    node "$SCRATCH"/axe_scan.mjs --out <repo>/.a11y-audit/automated --channel chrome --steps states.json <urls…>
    ```
    Read `summary.json`. Automated tools find a minority of real issues — this is input for the experts, not the audit.
-3. Pre-compute what every agent would otherwise grep for itself (seconds of script time instead of thirty tool calls per agent):
+3. With a runtime, digest the accessibility trees the scan captured. Without one, skip this and leave no empty file behind:
    ```
-   python3 "SKILL_DIR"/scripts/scan_patterns.py <repo> > <repo>/.a11y-audit/pattern-inventory.md
-   python3 "SKILL_DIR"/scripts/extract_colors.py <repo> > <repo>/.a11y-audit/colour-pairs.md
-   python3 "SKILL_DIR"/scripts/aria_digest.py <repo>/.a11y-audit/automated > <repo>/.a11y-audit/aria-digest.md   # runtime only
+   python3 "SKILL_DIR"/scripts/aria_digest.py <repo>/.a11y-audit/automated > <repo>/.a11y-audit/aria-digest.md
    ```
-   Skim the three outputs: the inventory's summary table and per-file heading/title/lang table, the failing colour pairs, and the nameless-controls column of the digest. They feed the stack profile's baseline headline.
-4. Now write `.a11y-audit/stack-profile.md` following `references/stack-profile-template.md`: mode, runtime (URL, how started), scratch dir, browser tooling available to agents, stack, leverage points, key flows, persona selection, automated-baseline headline, known limits. It is the single brief every subagent reads, so keep it tight, factual and full of paths.
+   Skim its nameless-controls column next to the inventory's summary table and the failing colour pairs from Phase 2. Together they are the stack profile's baseline headline.
+4. Complete `.a11y-audit/stack-profile.md`, started in Phase 2: mode, runtime (URL, how started), scratch dir, browser tooling available to agents, stack, leverage points, key flows, persona selection, automated-baseline headline, known limits. It is the single brief every subagent reads, so keep it tight, factual and full of paths.
+   The persona selection is decided here, so that Phase 5 only reads it. Full and lean: the four core personas, the others on their trigger. Mini: the screen reader persona plus one (low vision for content sites, motor and voice for tools), so in a mini audit replace the template's core line with those two.
+
+   | Persona file | Run when |
+   |---|---|
+   | `agents/personas/screen-reader-user.md` | always |
+   | `agents/personas/low-vision-user.md` | always |
+   | `agents/personas/motor-voice-user.md` | always |
+   | `agents/personas/cognitive-user.md` | always |
+   | `agents/personas/colour-blind-user.md` | colour carries meaning: charts, status, validation, maps, tags |
+   | `agents/personas/deaf-user.md` | audio/video, voice/phone-only support, audio notifications |
+   | `agents/personas/vestibular-user.md` | animations, parallax, carousels, autoplay, transitions |
+   | `agents/personas/older-novice-user.md` | consumer- or citizen-facing products (default on unless clearly dev/internal tooling) |
 5. Build the briefings, one file per agent, so each subagent reads one file instead of seven (`--lean` for lean mode; `--playbook` takes the section numbers from the stack profile):
    ```
    python3 "SKILL_DIR"/scripts/build_briefs.py "SKILL_DIR" <repo>/.a11y-audit --playbook <sections> [--lean | --mini]
    ```
-   Each expert brief ends with the start of that agent's findings file: its name, its lenses and every criterion it owns, each still to be given a status. Build the briefs again whenever the stack profile changes, because they carry a copy of it.
+   Each lens brief ends with the start of that agent's findings file: its name, its lenses and every criterion it owns, each still to be given a status. The framework-maximizer owns no criteria and gets none. Build the briefs again whenever the stack profile changes, because they carry a copy of it.
 6. Run the phase check for phase 3 before spawning anyone.
 
 ## Phase 4 — Experts, merge, dedupe, verify
@@ -194,7 +210,9 @@ reply with at most 8 lines (counts per severity, top 3 issues).
 
 Every path the agent needs beyond those two is in the stack profile (skill dir, scratch dir, runtime, browser tool), so the prompt stays short and the plugin path with spaces appears once.
 
-Subagents may run on a smaller/faster model if the tool allows choosing one; your own verification is where the strongest model matters. If subagents are unavailable (plain chat), run each lens yourself sequentially, writing the same files, and say so in the method section.
+Subagents may run on a smaller/faster model if the tool allows choosing one; your own verification is where the strongest model matters.
+
+In a full, lean or mini audit, spawning is the rule, not an option. Look at your own tool list: if it holds a Task or Agent tool, the lenses and later the personas run as subagents, also when the site is small and doing them yourself looks quicker. A small site is what mini mode is for; only a focused review, which has no Phase 4, applies the lenses inline. One context reading six lenses shares one blind spot, and the personas are only a second opinion if they did not write the first. Only a session without such a tool (plain chat) runs each lens itself, one after another, writing the same files; say so in the first line of your reply and in the method section.
 
 Tell the user in one line that the experts have started and roughly how long it takes; nothing more until they finish.
 
@@ -206,33 +224,22 @@ python3 "SKILL_DIR"/scripts/merge_findings.py <repo>/.a11y-audit --ownership "SK
 
 It writes `_merged.json`, `_merged.md` (one line per finding plus root-cause clusters — findings citing the same lines), and `coverage.md`; derives tiers from `visual_impact`; flags schema problems and owner conflicts. It also checks every finding's claims against what a script can look up: the cited file, lines and snippet exist (pass `--repo <dir>` when the audit scope is a subdirectory), the criterion is a level A or AA one with its name and level taken from the ownership table, and stated contrast ratios are recomputed and corrected. Everything that does not hold is listed under "Problems to resolve" at the end of `_merged.md`. That list holds only what needs a decision from you: content the merge had to drop, claims that do not hold, two fields that contradict each other, and values it had to guess. Resolve it first, by fixing the findings file or dropping the finding: a citation that does not exist is not evidence, and a finding with only a triple-A criterion or none at all is invisible to the coverage matrix. What the merge could settle itself from data it can look up or by a fixed conversion (a criterion level, a contrast ratio, a generated fingerprint, a persona finding written in another shape) is listed below it under "Settled by the merge". Nothing there needs action. Then decide the duplicates: for each cluster pick the canonical finding (the pattern owner's, see `references/wcag-ownership.md`), write `findings/_dedupe.json` — `{"DYN-004": ["KBD-003", "SEM-010"], …}` — and re-run the script. Expect a third to a half of raw findings to collapse.
 
-**4c — verify the top before anyone builds on it.** Open the cited code or page for every blocker and critical finding (there are rarely more than ten). Check them against the false-positive list in `agents/experts/_protocol.md`. Drop or downgrade what doesn't hold up. Anything you find yourself while verifying goes into `findings/orchestrator.json` (prefix `ORC`, same schema) — not into the report by hand. Re-run the script, then run the phase check for phase 4. Personas and the maximizer must not inherit a false positive.
+**4c — verify the top before anyone builds on it.** Open the cited code or page for every blocker and critical finding (there are rarely more than ten). Check them against the false-positive list in `agents/experts/_protocol.md`. Drop or downgrade what doesn't hold up. Anything you find yourself while verifying goes into `findings/orchestrator.json` (prefix `ORC`, same schema) — not into the report by hand. Where a problem has both a tier-1 and a tier-2 fix (icon-only link: accessible name now, visible text later), split it into two linked findings now, in the findings file, so that the personas and the report work from the same IDs. Re-run the script, then run the phase check for phase 4. Personas and the maximizer must not inherit a false positive.
 
 ## Phase 5 — Personas and framework-maximizer, in parallel
 
 Spawn, **in one message**: the personas and `agents/experts/framework-maximizer.md`. They read the same deduplicated `_merged.md` and don't depend on each other.
 
-- Personas (protocol: `agents/personas/_protocol.md`; same prompt template, persona file instead of lens file, output `.a11y-audit/personas/<persona>.md`): they walk the key flows **first** — at runtime when there is one, that is not optional — and read `_merged.md` only afterwards to reconcile (`confirmed` = seen in their own walk, `cites`, `disputed`). Full and lean: always the four core personas, the others on their trigger. Mini: screen reader plus one (low vision for content sites, motor/voice for tools).
-
-| Persona file | Run when |
-|---|---|
-| `agents/personas/screen-reader-user.md` | always |
-| `agents/personas/low-vision-user.md` | always |
-| `agents/personas/motor-voice-user.md` | always |
-| `agents/personas/cognitive-user.md` | always |
-| `agents/personas/colour-blind-user.md` | colour carries meaning: charts, status, validation, maps, tags |
-| `agents/personas/deaf-user.md` | audio/video, voice/phone-only support, audio notifications |
-| `agents/personas/vestibular-user.md` | animations, parallax, carousels, autoplay, transitions |
-| `agents/personas/older-novice-user.md` | consumer- or citizen-facing products (default on unless clearly dev/internal tooling) |
+- Personas (protocol: `agents/personas/_protocol.md`; same prompt template, persona file instead of lens file, output `.a11y-audit/personas/<persona>.md`): they walk the key flows **first** — at runtime when there is one, that is not optional — and read `_merged.md` only afterwards to reconcile (`confirmed` = seen in their own walk, `cites`, `disputed`). Which personas run is in the stack profile, decided in Phase 3: four or more in a full or lean audit, two in a mini audit.
 
 - Framework-maximizer: attaches leverage points to existing findings (which token, base component, hook or config fixes several at once) and files new findings only for tooling, CI, suppressions and unused platform features.
 
-One progress line when they start, none in between. When all are done, run the merge script once more. It links the persona verdicts, pulls in their new `PER-*` findings (normalised; what it converted is listed under "Settled by the merge", what it could not use under "Problems to resolve"), attaches the maximizer's leverage entries to their targets and lists them ranked (that list is the structural-advice section; the entries are not findings and never go into `_dedupe.json`), and applies the severity floor: a key flow **failed** → the findings it names become blocker; **only with help** → critical. Coverage statuses that rest only on persona findings show as "fail (unverified)" until Phase 6 confirms them. Then run the phase check for phase 5.
+One progress line when they start, none in between. When all are done, run the merge script once more. It links the persona verdicts, pulls in their new `PER-*` findings (normalised; what it converted is listed under "Settled by the merge", what it could not use under "Problems to resolve"), attaches the maximizer's leverage entries to their targets and lists them ranked (that list is the structural-advice section; the entries are not findings and never go into `_dedupe.json`), and applies the severity floor: a key flow **failed** → the findings it names become blocker; **only with help** → critical. A criterion that only a persona cites keeps its owner's status; `coverage.md` lists the citation under "Persona observations" for you to settle in Phase 6. Then run the phase check for phase 5.
 
 ## Phase 6 — Synthesis and report
 
-1. **Final verification**: persona-new findings and every *serious* finding that is cheap to reproduce at runtime (a click and a look — that is where bugs that hurt everyone surface). Keep the severity floors unless a persona's trace doesn't hold up. Resolve the conflicts listed in `coverage.md`.
-2. **Tiers**: the script derived them from `visual_impact`; check them against `references/tiering.md` and overrule only with a stated reason. Where a problem has both a tier-1 and a tier-2 fix (icon-only link: accessible name now, visible text later), split it into two linked findings.
+1. **Final verification**: persona-new findings and every *serious* finding that is cheap to reproduce at runtime (a click and a look — that is where bugs that hurt everyone surface). Keep the severity floors unless a persona's trace doesn't hold up. Resolve the conflicts listed in `coverage.md`, and decide each persona observation it lists: where the persona is right about a criterion its owner passed, change the status in the owner's findings file and merge again; otherwise leave it as the advisory note it is.
+2. **Tiers**: the script derived them from `visual_impact`; check them against `references/tiering.md` and overrule only with a stated reason. A finding that still needs splitting into a tier-1 and a tier-2 part is split in its findings file and merged again, never in the report.
 3. **Colours**: the visual lens should already have run `scripts/contrast.py` on every contrast finding; fill any gap (`fix` keeps the hue and reports ΔE) so every tier-2 colour change has before/after values and a ratio.
 4. **Re-audit only**: run the merge script with `--previous <repo>/.a11y-audit/previous` to get `delta.md` (resolved / still open / regressed / new by fingerprint); lead the summary with the delta and the score change.
 5. **Score** now and after each tier with the rubric in `references/tiering.md`.

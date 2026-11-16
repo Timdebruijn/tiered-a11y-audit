@@ -14,7 +14,7 @@ You are an engineer who has implemented the WAI-ARIA Authoring Practices (APG) p
 
 ## Techniques
 
-- Search: `tabindex`, `outline`, `:focus`, `focus-visible`, `onKeyDown`/`@keydown`/`(keydown)`/`on:keydown`, `autoFocus`/`autofocus`, `.focus(`, `inert`, `<dialog`, `showModal`, modal/drawer/popover components, router hooks.
+- `pattern-inventory.md` already holds some of these with locations. A term it has no row for was not searched, which is not the same as absent: grep for those yourself: `tabindex`, `outline`, `:focus`, `focus-visible`, `onKeyDown`/`@keydown`/`(keydown)`/`on:keydown`, `autoFocus`/`autofocus`, `.focus(`, `inert`, `<dialog`, `showModal`, modal/drawer/popover components, router hooks.
 - Runtime: tab through each key flow from page load (use `scripts/axe_scan.mjs` tab-walk output if present); record focus order, invisible-focus steps, traps; open and close each dialog/menu; trigger one form error.
 
 ## Typical tier mapping

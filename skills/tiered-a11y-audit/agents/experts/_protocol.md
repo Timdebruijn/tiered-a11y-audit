@@ -15,12 +15,11 @@ Work in English (findings, notes, persona narratives); the orchestrator writes t
 2. **Think in root causes.** When you see a pattern, find where it originates (component, mixin, token, utility class), then count instances with search (`rg`/`grep`). Report one finding with the root location and the instance count, not one finding per instance.
 3. **Read the framework playbook sections** you were given. Your fixes must use the stack's native features and existing dependencies before introducing anything new. If the project already has an accessible library (Radix, React Aria, Headless UI, Angular CDK, Bits UI…) and a hand-rolled component duplicates it, say so.
 4. **Runtime when available.** If a URL is given and you have a browser tool (Playwright, Chrome MCP), use it for the things static reading cannot determine: computed contrast, focus visibility, actual focus order, reflow, announcements. Otherwise, reason from code and mark runtime-dependent findings `confidence: "medium"` or `"low"`.
-5. **Budget.** For large repos: shared layer fully, key flows fully, then a sample of 5–10 other pages/components. Record what you did not examine in `coverage.not_examined`.
-6. **Positives.** Record what is done well in your lens (`positives`). It helps the team and calibrates the score.
-7. **No speculation dressed as fact.** Every finding needs evidence you actually looked at. If unsure, lower the confidence; don't omit the doubt.
-8. **Own your criteria.** `references/wcag-ownership.md` assigns each WCAG 2.2 A/AA criterion to one expert. For every criterion you own, report a status in `sc_coverage`: `pass` only if you actually checked it in the shared layer and key flows; `not-tested` with the reason (usually "needs runtime") otherwise; `n/a` with the reason when the product has nothing it applies to. A `pass` you didn't check is worse than `not-tested`.
-9. **Decide visual impact explicitly.** For each finding set `visual_impact` (none / keyboard-only / preference-only / subtle / significant) by imagining the fix applied and a sighted mouse user looking at the page with default settings. The tier follows from it; if you have to argue, pick the more visible category.
-10. **Budget.** Aim for ≤ ~40 tool calls now that the inventory exists. Spend them in this order: confirming inventory hits in the shared layer → key flows → a sample of other pages. Instance counts come from the inventory. Stop and write when the budget is spent; record the gap in `coverage.not_examined`.
+5. **Positives.** Record what is done well in your lens (`positives`). It helps the team and calibrates the score.
+6. **No speculation dressed as fact.** Every finding needs evidence you actually looked at. If unsure, lower the confidence; don't omit the doubt.
+7. **Own your criteria.** `references/wcag-ownership.md` assigns each WCAG 2.2 A/AA criterion to one expert. For every criterion you own, report a status in `sc_coverage`: `pass` only if you actually checked it in the shared layer and key flows; `not-tested` with the reason (usually "needs runtime") otherwise; `n/a` with the reason when the product has nothing it applies to. A `pass` you didn't check is worse than `not-tested`.
+8. **Decide visual impact explicitly.** For each finding set `visual_impact` (none / keyboard-only / preference-only / subtle / significant) by imagining the fix applied and a sighted mouse user looking at the page with default settings. The tier follows from it; if you have to argue, pick the more visible category.
+9. **Budget.** Aim for ≤ ~40 tool calls. Spend them in this order: confirming inventory hits in the shared layer, the key flows in full, then a sample of 5 to 10 other pages or components. Instance counts come from the inventory. Stop and write when the budget is spent, and record what you did not examine in `coverage.not_examined`.
 
 ## Common false positives — check before filing
 
@@ -56,4 +55,4 @@ If you find something that is broken for every user (a confirmation that is wipe
 
 ## Output
 
-Write valid JSON per `references/finding-schema.md` to the path you were given, then reply with at most 8 lines: counts per severity, the top 3 issues by impact, and any blocker you found.
+Write valid JSON per `references/finding-schema.md` to the path you were given. If your briefing ends with the start of your findings file, begin from that JSON: it names your file and lists every criterion you own, each waiting for a status (the framework-maximizer owns none and has no such block). Copy every snippet from the file you cite instead of retyping it, because a script looks it up there. Then reply with at most 8 lines: counts per severity, the top 3 issues by impact, and any blocker you found.

@@ -19,7 +19,7 @@ Two rules that keep you from duplicating the others:
 ## Techniques
 
 - Read: `package.json`(s) and lockfile versions, lint configs (`.eslintrc*`, `eslint.config.*`, `.template-lintrc*`), `tsconfig`, framework config files, theme files, the shared component directory, test setup files, CI workflow files (`.github/workflows`, `.gitlab-ci.yml`, etc.).
-- Search for suppressions: `eslint-disable.*(jsx-a11y|vuejs-accessibility|template/)`, `svelte-ignore a11y`, `a11y` in config files, `disableRules`, `rules: {.*: { enabled: false`.
+- Suppressions: the inventory's row "Suppressed accessibility lint rule" lists the lint-comment ones with locations, and `.a11y-audit/stack-detect.md` counts them per rule; grep for the rest, config-level ones included: `eslint-disable.*(jsx-a11y|vuejs-accessibility|template/)`, `svelte-ignore a11y`, `a11y` in config files, `disableRules`, `rules: {.*: { enabled: false`.
 
 ## Output emphasis
 
