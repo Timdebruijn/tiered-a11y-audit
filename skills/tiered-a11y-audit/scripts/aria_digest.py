@@ -18,13 +18,16 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from generic_text import ALL as GENERIC_PHRASES  # noqa: E402
+
 LINE = re.compile(r"^(\s*)- ([a-z]+)(?:\s+\"((?:[^\"\\]|\\.)*)\")?(?:\s*\[([^\]]*)\])?(?::\s*(.*))?$")
 LANDMARKS = {"banner", "navigation", "main", "contentinfo", "complementary", "search", "region", "form"}
 INTERACTIVE = {"button", "link", "textbox", "combobox", "checkbox", "radio", "slider", "switch", "tab", "menuitem",
                "menuitemcheckbox", "menuitemradio", "searchbox", "spinbutton", "listbox", "option", "treeitem"}
 NAMELESS_OK = {"option", "listbox"}  # options often carry text as value; listbox named by its combobox
-GENERIC = {"edit", "delete", "remove", "more", "read more", "lees meer", "details", "open", "close", "view", "save",
-           "revert", "add", "ok", "x", "×", "click here", "here", "meer", "bekijk", "wijzig"}
+# action words that need their object to mean something, plus the generic phrases of every language generic_text.py knows
+GENERIC = {"edit", "delete", "remove", "open", "close", "view", "save", "revert", "add", "ok", "x", "×", "wijzig"} | set(GENERIC_PHRASES)
 
 
 def parse(text: str):

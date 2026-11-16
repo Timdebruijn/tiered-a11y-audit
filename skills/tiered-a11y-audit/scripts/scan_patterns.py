@@ -19,6 +19,9 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from generic_text import ALL as GENERIC_PHRASES, LANGUAGES as GENERIC_LANGUAGES  # noqa: E402
+
 SKIP_DIRS = {"node_modules", ".git", "dist", "build", ".next", ".nuxt", ".output", ".svelte-kit", ".astro", "out",
              "coverage", "vendor", ".venv", "venv", "__pycache__", "target", ".turbo", ".cache", "storybook-static",
              ".a11y-audit", "Pods", ".dart_tool", "bin", "obj", "public/build", "resources/_gen"}
@@ -139,8 +142,9 @@ MARKUP_PATTERNS = [
     ("svg_inline", r"<svg\b(?![^>]*\b(aria-hidden|role|aria-label|aria-labelledby)\s*=)[^>]*>", re.I,
      "Inline SVG without aria-hidden/role/name", "content", "Decorative: aria-hidden=\"true\" focusable=\"false\"; meaningful: role=\"img\" + title/aria-label (1.1.1)."),
     ("canvas", r"<canvas\b", re.I, "Canvas elements (need a text alternative)", "content", "1.1.1."),
-    ("generic_link_text", r">\s*(lees meer|read more|meer info|more|klik hier|click here|here|hier|learn more|details)\s*<", re.I,
-     "Generic link/button text", "content", "2.4.4: make the purpose clear from the text."),
+    ("generic_link_text", r">\s*(" + "|".join(map(re.escape, GENERIC_PHRASES)) + r")\s*<", re.I,
+     f"Generic link/button text (phrases in {GENERIC_LANGUAGES}; other languages not searched)", "content",
+     "2.4.4: make the purpose clear from the text. A site in a language outside that list has to be read for this by the lens."),
     ("required_marker_only", r"<[^>]*\brequired\b[^>]*>|\baria-required\s*=", re.I, "Required controls (check visible and programmatic indication)", "forms", "3.3.2."),
     ("autocomplete_attr", r"\bautocomplete\s*=\s*[\"'](?!off)", re.I, "autocomplete tokens present (good)", "forms", "1.3.5."),
     ("suppressed_a11y_rule", r"eslint-disable[^\n]*?(jsx-a11y|vuejs-accessibility|@angular-eslint/template)/[\w-]+|svelte-ignore\s+a11y[\w-]*|template-lint-disable\s+[\w-]+", 0,

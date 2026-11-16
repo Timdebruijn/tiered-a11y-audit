@@ -102,6 +102,18 @@ def test_a_hand_written_site_or_public_folder_is_the_ui_for_all_three_scanners()
                 assert ("#9a9a9a" in colours) == ui, f"colour extractor, {what}"
 
 
+def test_generic_link_text_is_found_in_every_listed_language_and_the_row_says_which():
+    samples = {"en": "Read more", "nl": "Lees meer", "de": "Weiterlesen", "fr": "En savoir plus", "es": "Leer m\u00e1s", "pt": "Saiba mais", "it": "Leggi di pi\u00f9"}
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        (root / "index.html").write_text("<html><body>" + "".join(f'<a href="/{k}">{v}</a>\n' for k, v in samples.items())
+                                         + '<a href="/pricing">Pricing for teams</a><a href="/more-about-us">More about our team</a></body></html>', encoding="utf-8")
+        out = run("scan_patterns.py", root)
+        row = next(line for line in out.splitlines() if line.startswith("| Generic link/button text"))
+        assert f"| {len(samples)} |" in row, f"expected {len(samples)} generic links, one per language: {row}"
+        assert "phrases in en, nl, de, fr, es, pt, it; other languages not searched" in row, "a zero must not read as none for a language that was never searched"
+
+
 def test_forms_and_controls_are_counted_for_the_audit_size():
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
