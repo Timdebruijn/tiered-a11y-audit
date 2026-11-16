@@ -73,7 +73,8 @@ Mention the moments that worked well, too.
  id "PER-<persona>-001", fingerprint, title, description, evidence [{file, lines, url, selector, snippet}],
  wcag [{sc, name, level}], severity, affected_users, visual_impact, proposed_tier, fix {summary, location},
  effort, confidence, verify. Not "tier": "T2", not a bare "location" string, not a "detail" field — the merge
- script normalises these but every deviation is flagged as a schema problem for the orchestrator.)
+ script converts these and lists each conversion for the orchestrator; a finding with neither a
+ visual_impact nor a tier is a problem it has to resolve.)
 
 ## What would make this a 10 for me
 2–4 bullets, concrete.
