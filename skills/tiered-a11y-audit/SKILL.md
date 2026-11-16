@@ -220,7 +220,7 @@ reply with at most 8 lines (counts per severity, top 3 issues).
 
 Every path the agent needs beyond those two is in the stack profile (skill dir, scratch dir, runtime, browser tool), so the prompt stays short and the plugin path with spaces appears once.
 
-Subagents may run on a smaller/faster model if the tool allows choosing one; your own verification is where the strongest model matters.
+Run the expert, persona and framework-maximizer subagents on a mid-tier model when the tool lets you choose: pass `model: "sonnet"` on each of those calls. Their work is reading code against a lens and writing structured findings, and on the fixture two measured audits found the same 22 of 24 seeded failures with the subagents on the mid-tier model and on the top one. Your own steps stay on the session's model: deciding duplicates, verifying blockers and writing the report's prose is where the strongest model matters. If the tool takes no model, leave it.
 
 In a full, lean or mini audit, spawning is the rule, not an option. Look at your own tool list: if it holds a Task or Agent tool, the lenses and later the personas run as subagents, also when the site is small and doing them yourself looks quicker. A small site is what mini mode is for; only a focused review, which has no Phase 4, applies the lenses inline. One context reading six lenses shares one blind spot, and the personas are only a second opinion if they did not write the first. Only a session without such a tool (plain chat) runs each lens itself, one after another, writing the same files; say so in the first line of your reply and in the method section.
 
