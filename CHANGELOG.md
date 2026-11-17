@@ -2,9 +2,9 @@
 
 Rounds of review and real runs, newest first. Each round changed what the report says, not only how it is phrased.
 
-## Unreleased
+## 1.2.0 (2026-11-17)
 
-Merged after 1.1.1 and not in a release yet.
+Everything merged after 1.1.1, with the pull request it came in. The case scores in the README are those of the eval run of 17 November, described below.
 
 ### Round 14 — the checks run without being asked (2026-11-17)
 - A workflow runs the eight self-checks of the scripts, the one of the eval graders and the linter on the README, on every pull request and on every push to main, on Python 3.9 and on the current version (#31, #33). Until then they ran only when someone started them. The job for 3.9 is pinned to Ubuntu 24.04, because that Python version is not built for the newer runner image.
