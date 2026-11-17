@@ -89,8 +89,8 @@ def merged_is_current(ws: Path, gaps: list):
     problems = merged.get("problems") or []
     if problems:
         # what the merge settled itself is under "notes"; this list is only what needs a decision
-        gaps.append(f"the merge lists {len(problems)} problems to resolve (findings/_merged.md, at the end), the first: "
-                    f"{' '.join(str(problems[0]).split())[:120]}. Correct the findings file or drop the finding, then merge again")
+        gaps.append(f"the merge lists {len(problems)} problem{'s' if len(problems) > 1 else ''} to resolve (findings/_merged.md, at the end), the first: "
+                    f"{' '.join(str(problems[0]).split())[:120]}. Correct the file it names or drop the finding, then merge again")
     return merged
 
 
