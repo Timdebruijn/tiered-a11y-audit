@@ -1,0 +1,8 @@
+{
+  "name": "tiered-a11y-audit",
+  "description": "The tiered-a11y-audit plugin: a full accessibility audit of a frontend repository, reported in three tiers.",
+  "owner": { "name": "Tim de Bruijn" },
+  "plugins": [
+    { "name": "tiered-a11y-audit", "source": "./" }
+  ]
+}
