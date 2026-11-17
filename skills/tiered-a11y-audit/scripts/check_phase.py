@@ -13,9 +13,9 @@ Run it at the end of the phase with that number:
      and has no problem left to resolve
   5  the personas for this mode and the framework-maximizer reported, and the merge was run after them and
      again has no problem left
-  6  the merge is still newer than its inputs and without problems, the draft was rendered after it, a re-audit whose earlier
-     audit has a merge was merged with --previous, and REPORT.md was assembled after the last change to the
-     prose file and passes lint_report.py
+  6  the merge is still newer than its inputs and without problems, the draft was rendered after it, a
+     re-audit whose earlier audit has a merge was merged with --previous, and REPORT.md was assembled after
+     the last change to the prose file and passes lint_report.py
 
 It cannot tell this run's files from files an earlier run left in the workspace: moving an earlier audit
 aside before the run starts is what keeps the answers honest.
@@ -31,6 +31,7 @@ import argparse
 import json
 import re
 import sys
+import textwrap
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -89,8 +90,11 @@ def merged_is_current(ws: Path, gaps: list):
     problems = merged.get("problems") or []
     if problems:
         # what the merge settled itself is under "notes"; this list is only what needs a decision
-        gaps.append(f"the merge lists {len(problems)} problem{'s' if len(problems) > 1 else ''} to resolve (findings/_merged.md, at the end), the first: "
-                    f"{' '.join(str(problems[0]).split())[:120]}. Correct the file it names or drop the finding, then merge again")
+        todo = "Correct the claim where it was made (a findings file, a persona report, _dedupe.json) or drop the finding, then merge again"
+        if any("not found in the repository" in str(p) for p in problems):
+            todo += "; if the cited files do exist, the audit scope is a subdirectory and the merge needs --repo <dir>"
+        gaps.append(f"the merge lists {len(problems)} problem{'s' if len(problems) > 1 else ''} to resolve (findings/_merged.md, at the end), "
+                    f"the first: {textwrap.shorten(str(problems[0]), 220, placeholder=' ...')}. {todo}")
     return merged
 
 
