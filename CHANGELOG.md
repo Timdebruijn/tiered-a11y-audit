@@ -8,7 +8,7 @@ Merged after 1.2.0 and not in a release yet.
 
 ### Round 15 — installing without a clone (2026-11-17)
 - The repository is its own marketplace: `.claude-plugin/marketplace.json` lists the plugin with the repository root as its source, so `claude plugin install tiered-a11y-audit --marketplace Timdebruijn/tiered-a11y-audit` installs it from GitHub. Until then the only ways in were a clone with a link into the skills folder, or `--plugin-dir` for one session. The README gives the install and update commands first and keeps the clone for working on the skill. The plugin manifest names its author.
-- The plugin has an icon, `.claude-plugin/icon.png`: a head on three widening tiers, 1024 pixels square (#39). `claude plugin validate` asked for one before the plugin can be submitted to the Anthropic plugin directory. Measured with the skill's own contrast tool, the off-white is 14.52 to 1 against the background and the amber 7.9 to 1.
+- The plugin has an icon, `.claude-plugin/icon.png`: a head on three widening tiers, 1024 pixels square (#39). `claude plugin validate` warned that the Anthropic plugin directory looks for one. Measured with the skill's own contrast tool, the off-white is 14.52 to 1 against the background and the amber 7.9 to 1.
 - Not measured: an update from one release to the next. That an installed plugin moves only when the version in the manifest changes is what the Claude Code documentation says, and no release has gone out since to show it.
 
 ## 1.2.0 (2026-11-17)
