@@ -36,7 +36,35 @@ The findings can be exported three ways: as SARIF 2.1.0, the Static Analysis Res
 
 ## Install
 
-The skill itself lives in the `skills/tiered-a11y-audit/` subdirectory, which is what makes the repository loadable as a plugin as well. The repository root has no `SKILL.md` of its own, so a personal install has to link the subdirectory, not the root.
+The repository is a plugin and its own marketplace, so Claude Code installs it from GitHub with one command:
+
+```bash
+claude plugin install tiered-a11y-audit --marketplace Timdebruijn/tiered-a11y-audit
+```
+
+If your version of Claude Code does not know the `--marketplace` option, add the marketplace first and install from it:
+
+```bash
+claude plugin marketplace add Timdebruijn/tiered-a11y-audit
+```
+
+```bash
+claude plugin install tiered-a11y-audit@tiered-a11y-audit
+```
+
+### Keeping it up to date
+
+Update the plugin with the next command, and restart Claude Code to load the new version:
+
+```bash
+claude plugin update tiered-a11y-audit@tiered-a11y-audit
+```
+
+According to the Claude Code documentation an update arrives only when the version in `.claude-plugin/plugin.json` changes. Here that is once per release, so what is merged between two releases does not reach an installed plugin. Claude Code does not update this plugin by itself unless you turn that on: open `/plugin`, pick this marketplace under Marketplaces and enable auto-update.
+
+### From a clone
+
+To work on the skill, or to run a version that is not released yet, clone the repository and link it. The skill itself lives in the `skills/tiered-a11y-audit/` subdirectory. The repository root has no `SKILL.md` of its own, so a personal install has to link the subdirectory, not the root.
 
 First clone the repository:
 
@@ -55,6 +83,8 @@ As an alternative, load the whole repository as a plugin for one session. This i
 ```bash
 claude --plugin-dir ~/src/tiered-a11y-audit
 ```
+
+### Using it
 
 Afterwards, in any repository, ask in your own words: "maak een toegankelijkheidsrapport van deze site", or "how accessible is this app?". The skill asks its questions, runs from under ten minutes for a small site read from its code to 45 minutes for a full audit with a running app, and leaves everything in a folder called `.a11y-audit`. It asks permission to add that folder to your ignore file before it writes anything.
 
@@ -170,6 +200,7 @@ The workspace sits in the folder the audit was run on. That is usually `site`; w
 The next list gives every directory that matters, with what it holds.
 
 - `.claude-plugin/plugin.json` is the plugin manifest. Without it the repository is not a plugin and the evaluation runner has nothing to load.
+- `.claude-plugin/marketplace.json` lists that one plugin, with the repository root as its source. It is what lets Claude Code install the plugin from GitHub.
 - `skills/tiered-a11y-audit/SKILL.md` is the workflow itself, and the file Claude Code reads.
 - `skills/tiered-a11y-audit/agents/experts/` holds the six lenses, the framework-maximizer, and the protocol they share.
 - `skills/tiered-a11y-audit/agents/personas/` holds the eight personas and the protocol they share.
