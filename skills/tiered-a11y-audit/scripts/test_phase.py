@@ -143,6 +143,23 @@ def test_phase_4_wants_every_expert_every_criterion_and_a_current_merge():
     merge(ws)
     one(ws, "4", "marks 2.1.2 not-tested or n/a without a reason")
 
+    data = json.loads(good)
+    data["findings"][0]["evidence"] = [{"file": "src/gone.html", "lines": "1", "snippet": "<div onclick>"}]      # a citation that does not exist
+    f.write_text(json.dumps(data), encoding="utf-8")
+    merge(ws)
+    one(ws, "4", "the merge lists 1 problems to resolve")
+    data["findings"][0]["proposed_tier"] = 3                                   # and a tier that contradicts the visual impact
+    f.write_text(json.dumps(data), encoding="utf-8")
+    merge(ws)
+    one(ws, "4", "the merge lists 2 problems to resolve")
+    data["findings"][0]["fix"] = "Use a button."                               # a note, not a problem: the count must not move for the conversion
+    f.write_text(json.dumps(data), encoding="utf-8")
+    merge(ws)
+    assert "the merge lists 3 problems to resolve" in gaps(ws, "4")[0], gaps(ws, "4")      # the third is the ownership it now has to assume
+    f.write_text(good, encoding="utf-8")
+    merge(ws)
+    assert gaps(ws, "4") == [], "the phase stays shut after the problems were resolved"
+
     f.write_text(good, encoding="utf-8")                                       # edited after the merge
     one(ws, "4", "older than operate.json")
     merge(ws)
