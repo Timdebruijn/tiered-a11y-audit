@@ -14,12 +14,18 @@ permissions:
 jobs:
   self-checks:
     name: Python ${{ matrix.python }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        # 3.9 is the oldest version the README promises; 3.x is whatever is current
-        python: ["3.9", "3.x"]
+        include:
+          # 3.9 is the oldest version the README promises. It is past its end of life and is no longer
+          # built for the newest runner image, so it stays on the last image that has it.
+          - python: "3.9"
+            os: ubuntu-24.04
+          # whatever is current
+          - python: "3.x"
+            os: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
