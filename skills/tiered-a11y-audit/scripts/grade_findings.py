@@ -4,8 +4,9 @@
     python3 grade_findings.py <repo>/.a11y-audit/findings/_merged.json <ground-truth.json>
 
 A known failure counts as detected when one finding cites its criterion, cites its file, and mentions one
-of its keywords. Findings that match no known failure are listed as "unmatched" for manual review — they
-may be genuine extras or false positives; the script does not decide. Should-pass items are violated when
+of its keywords. An item whose `sc` is a list is cited by a finding that names any one of them. Findings
+that match no known failure are listed as "unmatched" for manual review — they may be genuine extras or
+false positives; the script does not decide. Should-pass items are violated when
 a finding cites the criterion AND one of the item's keywords in its title or description -- not in its
 fix, where correct markup for some other problem legitimately mentions the same element.
 
@@ -16,6 +17,12 @@ denominators rather than counted as a miss or a silent pass. Pure standard libra
 import json
 import sys
 from pathlib import Path
+
+
+def criteria_of(item):
+    """The criterion an item names, or the criteria when a correct finding may cite any one of several."""
+    sc = item.get("sc")
+    return [sc] if isinstance(sc, str) else list(sc or [])
 
 
 def text_of(f):
@@ -64,7 +71,7 @@ def main():
         hit = None
         for f in findings:
             scs = {s.get("sc") for s in f.get("wcag", []) if isinstance(s, dict)}
-            if k["sc"] in scs and k["file"].lower() in files_of(f) and any(w.lower() in text_of(f) for w in k["keywords"]):
+            if scs.intersection(criteria_of(k)) and k["file"].lower() in files_of(f) and any(w.lower() in text_of(f) for w in k["keywords"]):
                 hit = f; break
         if hit:
             detected.append((k["id"], hit["id"]))
@@ -84,7 +91,7 @@ def main():
         graded_sp += 1
         for f in findings:
             scs = {s.get("sc") for s in f.get("wcag", []) if isinstance(s, dict)}
-            if sp["sc"] in scs and any(w in claim_text_of(f) for w in kws):
+            if scs.intersection(criteria_of(sp)) and any(w in claim_text_of(f) for w in kws):
                 violated_sp.setdefault(sp["id"], []).append(f["id"])
     unmatched = [f for f in findings if f["id"] not in matched_findings]
     n = len(detected) + len(missed)

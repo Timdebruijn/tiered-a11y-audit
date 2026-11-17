@@ -44,6 +44,11 @@ HEAD = r"#{3,4} T%s-\d+\. "                 # the heading of a finding block; th
 REST = r"(?:(?!\n#{2,4} )[\s\S])*?"         # on to somewhere in the same block
 
 
+def criteria(item):
+    """As grade_findings.criteria_of: an item names one criterion, or a list of which a finding may cite any."""
+    return [item["sc"]] if isinstance(item["sc"], str) else item["sc"]
+
+
 def esc(s):
     return re.sub(r"[.*+?^${}()|\[\]\\]", lambda m: "\\" + m.group(0), s)
 
@@ -102,7 +107,7 @@ def full():
     }
     for i in json.loads((FULL / "ground-truth.json").read_text(encoding="utf-8"))["known_failures"]:
         slug = re.sub(r"[^a-z0-9]+", "-", i["keywords"][0].lower()).strip("-") or "x"
-        g[f"finds-{i['id'].lower()}-{i['sc'].replace('.', '-')}-{slug}"] = regex(block(sc=esc(i["sc"]), file=i["file"], words=i["keywords"]))
+        g[f"finds-{i['id'].lower()}-{criteria(i)[0].replace('.', '-')}-{slug}"] = regex(block(sc="|".join(map(esc, criteria(i))), file=i["file"], words=i["keywords"]))
     return g
 
 
@@ -206,7 +211,7 @@ def test_every_seeded_failure_is_found_by_its_own_grader_and_by_no_other():
     items = json.loads((FULL / "ground-truth.json").read_text(encoding="utf-8"))["known_failures"]
     finds = {n: s for n, s in full().items() if n.startswith("finds-")}
     assert len(finds) == len(items) == 24, (len(finds), len(items))
-    seeded = [finding(n, i["sc"], i["file"], i["tier"], i["keywords"][0]) for n, i in enumerate(items, 1)]
+    seeded = [finding(n, criteria(i)[0], i["file"], i["tier"], i["keywords"][0]) for n, i in enumerate(items, 1)]
     for n, i in enumerate(items):
         root = audit(FULL, [seeded[n]])
         got = [name for name, spec in finds.items() if passes(spec, root)]
@@ -217,13 +222,14 @@ def test_every_seeded_failure_is_found_by_its_own_grader_and_by_no_other():
         kw, there, elsewhere = i["keywords"][0], {"file": i["file"], "lines": "1"}, {"file": other_file, "lines": "1"}
         for what, found, f in (
                 ("another criterion", False, dict(seeded[n], wcag=[{"sc": "1.2.1"}])),
+                *[(f"only {sc}, which its item accepts as well", True, dict(seeded[n], wcag=[{"sc": sc}])) for sc in criteria(i)[1:]],
                 ("another file", False, dict(seeded[n], evidence=[elsewhere])),
                 ("no keyword", False, dict(seeded[n], title="Iets", description="Het is zo.")),
                 ("its file as the fourth place", False, dict(seeded[n], evidence=[elsewhere, elsewhere, elsewhere, there])),
                 ("the keyword only in the fix", True, dict(seeded[n], title="Iets", description="Het is zo.", fix={"ownership": "project", "summary": kw})),
                 # as an agent writes it: a sentence for a title, a second criterion first, its file as the third place, a compact block
                 ("a finding as an agent writes it", True, dict(seeded[n], title=f"Een lange titel waarin {kw} pas halverwege staat", severity="minor",
-                                                              wcag=[{"sc": "1.2.1"}, {"sc": i["sc"]}], evidence=[elsewhere, elsewhere, there]))):
+                                                              wcag=[{"sc": "1.2.1"}, {"sc": criteria(i)[0]}], evidence=[elsewhere, elsewhere, there]))):
             root = audit(FULL, [f])
             assert passes(finds[own[0]], root) is found, f"{i['id']} is {'not ' if found else ''}found with {what}"
             shutil.rmtree(root)
@@ -231,7 +237,7 @@ def test_every_seeded_failure_is_found_by_its_own_grader_and_by_no_other():
 
 def test_a_complete_audit_passes_every_grader_and_an_empty_one_fails_the_ones_about_findings():
     items = json.loads((FULL / "ground-truth.json").read_text(encoding="utf-8"))["known_failures"]
-    seeded = [finding(n, i["sc"], i["file"], i["tier"], i["keywords"][0]) for n, i in enumerate(items, 1)]
+    seeded = [finding(n, criteria(i)[0], i["file"], i["tier"], i["keywords"][0]) for n, i in enumerate(items, 1)]
     plain = audit(FULL, [dict(f) for f in seeded])
     seeded = [dict(f, fix=dict(f["fix"])) for f in seeded]
     seeded[12]["fix"]["summary"] = "Gebruik :focus-visible."                    # GT-13, outline none

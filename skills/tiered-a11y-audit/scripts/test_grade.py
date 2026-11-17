@@ -159,6 +159,17 @@ def test_a_real_detection_still_matches():
     assert "Ungradable" not in r.stdout, r.stdout
 
 
+def test_an_item_that_lists_criteria_is_found_under_any_one_of_them():
+    gt = {"known_failures": [{"id": "GT-01", "sc": ["4.1.2", "2.4.4"], "file": "index.html", "keywords": ["social"]}],
+          "should_pass": [{"id": "SP-01", "sc": ["1.3.1", "4.1.2"], "note": "nav named", "keywords": ["hoofdmenu"]}]}
+    for sc, found in (("4.1.2", True), ("2.4.4", True), ("1.1.1", False)):
+        r = grade({"findings": [finding("CNT-001", sc, "index.html", "social links have no name")]}, gt)
+        assert r.returncode == 0, r.stderr
+        assert f"Detection: {int(found)}/1" in r.stdout, (sc, r.stdout)
+    r = grade({"findings": [finding("SEM-001", "4.1.2", "index.html", "hoofdmenu has no name")]}, gt)
+    assert "Should-pass violated: 1/1" in r.stdout, r.stdout
+
+
 def test_shipped_ground_truth_has_no_ungradable_items():
     """Every item in the fixture's ground truth must be gradable, or the rate is not the rate."""
     gt = json.loads(ground_truth().read_text(encoding="utf-8"))
