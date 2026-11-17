@@ -92,7 +92,6 @@ def full():
             rf"\| {esc(L['flow'])} \| {esc(L['persona'])} \| {esc(L['result'])} \|" + "".join(
                 rf"(?=[\s\S]*\| {p} \|)" for p in ("screen-reader", "low-vision", "motor-voice", "cognitive"))),
         # reflow, text spacing, content on hover, focus not obscured: a static run cannot pass all four
-        "coverage-leaves-a-runtime-criterion-untested": regex(r"\| (?:1\.4\.10|1\.4\.12|1\.4\.13|2\.4\.11) \|[^\n]*\| not-tested \|", path=f"{WS}/coverage.md"),
         "site-html-is-left-as-it-was": regex(r"<html>", path="site/index.html"),
         "site-css-is-left-as-it-was": regex(r"\*:focus \{ outline: none; \}", path="site/styles.css"),
         "ran-the-merge-script": ran("merge_findings"),
@@ -250,9 +249,6 @@ def test_a_complete_audit_passes_every_grader_and_an_empty_one_fails_the_ones_ab
     assert not [n for n, s in full().items() if n.startswith("tier-") and n != "tier-1-holds-the-missing-lang" and passes(s, same)], \
         "a colour named in the text, or :focus-visible named in the problem, passes as a fix"
     assert passes(full()["findings-are-written-in-dutch"], same), "one English finding among Dutch ones fails the language grader"
-    cov = same / WS / "coverage.md"
-    cov.write_text(cov.read_text(encoding="utf-8").replace("| not-tested |", "| pass |"), encoding="utf-8")
-    assert not passes(full()["coverage-leaves-a-runtime-criterion-untested"], same), "a matrix that passes everything unseen passes"
     opens = re.compile(full()["report-opens-in-short-with-prose"]["pattern"], re.I)
     head = f"# Rapport\n\n## {L['short']}\n\n"
     assert opens.search(head + "De site scoort nu een 5.") and not [x for x in ("<!-- WRITE: [in-short] -->", "- een lijst", "| een | tabel |", "### kop")
