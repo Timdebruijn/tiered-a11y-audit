@@ -1,0 +1,44 @@
+name: Self-checks
+
+# The scripts each have a plain-assert self-check next to them, and the README is held to the skill's own
+# read-aloud rules. Nothing here calls a model or costs money: the eval suite is run by hand.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  self-checks:
+    name: Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 3.9 is the oldest version the README promises. It is past its end of life and is no longer
+          # built for the newest runner image, so it stays on the last image that has it.
+          - python: "3.9"
+            os: ubuntu-24.04
+          # whatever is current
+          - python: "3.x"
+            os: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Run every self-check
+        run: |
+          status=0
+          for t in skills/tiered-a11y-audit/scripts/test_*.py; do
+            echo "::group::$t"
+            python "$t" || status=1
+            echo "::endgroup::"
+          done
+          exit $status
+      - name: README follows its own rules
+        run: python skills/tiered-a11y-audit/scripts/lint_report.py README.md
