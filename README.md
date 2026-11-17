@@ -117,19 +117,31 @@ The next list gives the nine things this skill does not do, or does not yet know
 - **Tools find little.** Automated checks catch a minority of real issues. The expert lenses do the work, and the orchestrator verifies every blocker by opening the code or the page.
 - **One run per number.** Every figure above is a single run. Three runs on one day found 22, 23 and 24 of the 24 seeded failures, so read 96 percent as somewhere between 22 and 24.
 - **A small fixture.** It is four files and 252 lines, and one context without subagents already found 21 of the 24. What ten subagents add on a large codebase, where no single context can read everything, has no measurement behind it yet.
-- **Ignore the case score.** On the lean audit 4 of 21 graders passed, and that says more about the grading than about the audit. The detail block below explains why.
+- **Audit case scores unmeasured.** In the runs above 4 of the 21 graders of the lean audit passed, and that said more about the grading than about the audit. The graders of the two audit cases have been replaced since, and no run has been scored with the new ones. The detail block below explains both.
 - **Only Dutch is measured.** All four evaluation prompts are Dutch. The skill writes its findings and its report in the language you speak, and the fixed words of the report ship in English and Dutch, but no run in another language has been graded.
 - **Three stacks proven.** Those codebases have a real run behind them. Those are ESP32 firmware with HTML inside C++ strings, a React single-page application with canvas charts and a strict Content Security Policy, and a themed bilingual Hugo site. Other stacks have playbooks written for them but no run yet. Try it first on something you can afford to be wrong about, and read the feedback notes it leaves when something looked off.
 - **Scripts go in the scratch directory.** The runtime scan needs them there. Node resolves imports from the directory the script itself sits in, so a script left in the skill folder cannot find the installed packages. The skill handles this; anything hand-written has to do the same.
 - **No overlay widgets, ever.** The skill refuses to recommend one. They do not achieve conformance and they frequently make assistive technology worse.
 
-### Why the case score is low
+### What the case score of an audit measures
 
-Every grader judges the trace with a language model, and such a judge sees only the first 12 and the last 12 messages of that trace. That is a documented limit rather than a defect.
+Until release 1.1.1 every grader of the two audit cases judged the trace with a language model. Such a judge sees only the first 12 and the last 12 messages of a trace, which is a documented limit rather than a defect. A lean audit with ten subagents is several hundred messages, so the judge marked things absent that it never saw. It failed the grader for using the merge script in a run that ran that script more than once.
 
-A lean audit with ten subagents is several hundred messages. The judge received 24 of them, with the rest elided in the middle, and then marked things absent that it never saw. It failed the grader for using the merge script in a run that ran that script more than once, and the grader for choosing the small mode in a run that chose it.
+The graders now read what the run wrote. Most of them are patterns on a file, which cost nothing, give the same answer every time and see the whole file. The lean audit has 41 graders:
 
-The repair is to grade the written artefacts instead of the trace, and to use the deterministic grader types for questions such as whether a given script ran. Until that is done, read the detection rate and ignore the case score.
+- 24 hold the report to the seeded failures, one each. A failure counts as found when a finding block cites its criterion, names its file and uses one of its keywords in the title or the problem text. That is the rule of `grade_findings.py`, with one difference: only tiers 1 and 2 have finding blocks in the report, so a seeded failure filed in tier 3 counts as missed.
+- 3 hold a finding to its tier and to the quality of its fix: the missing language in tier 1, the focus outline in tier 1 with a replacement, and the muted text in tier 2 with a new colour.
+- 9 check the report, the coverage file and the site: three tiers, the short section before any table, tables of at most four columns, the four core personas in the matrix, a criterion that needs a running site left untested, and the site's own files unchanged.
+- 2 check that the merge script and the last phase check were run.
+- 3 are still judged by a language model, on short text only: the closing reply twice, and the prose file for the four scores.
+
+The themed site has 11 graders of the same kinds. What they cannot see is listed here, because a pattern is not a reader:
+
+- **A fixed path.** They read `site/.a11y-audit/`. An audit that puts its workspace one folder higher fails nearly all of them at once; the grader for the report file shows that this happened.
+- **The arm without the plugin.** It cannot pass graders that read the skill's own files, so on these two cases the difference between the arms says only that the pipeline ran. Run them with `--ablation none` to pay for one arm.
+- **Whether a finding is right.** A pattern sees that a criterion, a file and a word stand together, not that the finding is true or the fix sound.
+
+`python3 evals/test_graders.py` defines the pattern graders and checks them against reports the real merge and renderer produce: every seeded failure is found by its own grader and by no other, and not when the criterion, the file or the keyword is wrong. That check has not replaced a run. Whether the scores are stable over several runs is unmeasured.
 
 ## Running the evaluation cases
 
@@ -139,9 +151,9 @@ Four cases live in the `evals/` directory, which is where the evaluation runner 
 claude plugin eval . --scaffold --allow-tools Bash Write Edit --no-publish
 ```
 
-The scaffold option runs each case's `place-files.sh`, which writes the fixture site into a temporary directory. Remember that this is six complete audits by default, as explained under costs above; ask for one run per arm with `--runs 1` to make it two, and use the case option to pick a single case. Results land in `evals/results/`, which is ignored by git.
+The scaffold option runs each case's `place-files.sh`, which writes the fixture site into a temporary directory. Remember that this is six complete audits by default, as explained under costs above; ask for one run per arm with `--runs 1` to make it two, and use the case option to pick a single case. For the two audit cases `--ablation none` leaves out the arm without the plugin, which their graders cannot score anyway. Results land in `evals/results/`, which is ignored by git.
 
-To score the detection rate yourself, add `--keep-temp`, the option that keeps the temporary directory. Without it the scaffold directory is deleted, and the merged findings file the grader reads goes with it. The run prints the path it kept, which has to be opened first with `chmod 700` on the directory and its `sealed` subdirectory. Then run:
+The 24 graders for the seeded failures put the detection rate into the case score. To score it yourself as well, which also names the misses and the should-pass items, add `--keep-temp`, the option that keeps the temporary directory. Without it the scaffold directory is deleted, and the merged findings file the grader reads goes with it. The run prints the path it kept, which has to be opened first with `chmod 700` on the directory and its `sealed` subdirectory. Then run:
 
 ```bash
 python3 skills/tiered-a11y-audit/scripts/grade_findings.py <kept>/sealed/home/cwd/site/.a11y-audit/findings/_merged.json evals/full-audit-fixture-site/ground-truth.json
@@ -159,7 +171,7 @@ The next list gives every directory that matters, with what it holds.
 - `skills/tiered-a11y-audit/agents/personas/` holds the eight personas and the protocol they share.
 - `skills/tiered-a11y-audit/references/` holds the tiering rules, the finding schema, the criterion ownership table, the framework playbooks, the stack profile template, the report template, the tooling notes, and the report labels per language.
 - `skills/tiered-a11y-audit/scripts/` holds the preflight, the detector, the pattern scanner, the colour extractor, the contrast tool, the accessibility-tree digest, the runtime scan, the briefing builder, the phase check, the merge and coverage script, the renderer that writes the draft and assembles the report, the linter that checks it, the exporter, the grader for the evaluation fixture, and eight self-checks that cover most of them.
-- `evals/` holds the four test cases with their fixture sites. It stays at the repository root, because that is where the evaluation runner looks.
+- `evals/` holds the four test cases with their fixture sites, and `test_graders.py`, which defines the pattern graders of the two audit cases and checks them. It stays at the repository root, because that is where the evaluation runner looks.
 
 ## Contributing
 
