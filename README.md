@@ -125,15 +125,15 @@ The next list gives the nine things this skill does not do, or does not yet know
 
 ### What the case score of an audit measures
 
-Until release 1.1.1 every grader of the two audit cases judged the trace with a language model. Such a judge sees only the first 12 and the last 12 messages of a trace, which is a documented limit rather than a defect. A lean audit with ten subagents is several hundred messages, so the judge marked things absent that it never saw. It failed the grader for using the merge script in a run that ran that script more than once.
+Up to and including release 1.1.1 every grader of the two audit cases judged the trace with a language model. Such a judge sees only the first 12 and the last 12 messages of a trace, which is a documented limit rather than a defect. A lean audit with ten subagents is several hundred messages, so the judge marked things absent that it never saw. It failed the grader for using the merge script in a run that ran that script more than once.
 
-The graders now read what the run wrote. Most of them are patterns on a file, which cost nothing, give the same answer every time and see the whole file. The lean audit has 41 graders:
+The graders now read what the run wrote. Most of them are patterns on a file, which cost nothing, give the same answer every time and see the whole file. The lean audit has 42 graders:
 
-- 24 hold the report to the seeded failures, one each. A failure counts as found when a finding block cites its criterion, names its file and uses one of its keywords in the title or the problem text. That is the rule of `grade_findings.py`, with one difference: only tiers 1 and 2 have finding blocks in the report, so a seeded failure filed in tier 3 counts as missed.
-- 3 hold a finding to its tier and to the quality of its fix: the missing language in tier 1, the focus outline in tier 1 with a replacement, and the muted text in tier 2 with a new colour.
-- 9 check the report, the coverage file and the site: three tiers, the short section before any table, tables of at most four columns, the four core personas in the matrix, a criterion that needs a running site left untested, and the site's own files unchanged.
-- 2 check that the merge script and the last phase check were run.
-- 3 are still judged by a language model, on short text only: the closing reply twice, and the prose file for the four scores.
+- 24 hold the report to the seeded failures, one each. A failure counts as found when a finding block cites its criterion, names its file and uses one of its keywords in the title, the problem or the fix. That is the rule of `grade_findings.py`, read from the report instead of the merged findings, which makes it stricter in two ways. Only tiers 1 and 2 have finding blocks, so a seeded failure filed in tier 3 counts as missed. And a block names at most three places, so a finding whose only evidence in the right file is its fourth place counts as missed too.
+- 3 hold a finding to more than that: the missing language is in tier 1, the fix for the focus outline in tier 1 names `:focus-visible`, and the table of proposed colours in tier 2 gives the muted text another colour.
+- 10 check the report, the coverage file and the site: the report exists, is rendered in Dutch with findings written in Dutch, leaves no part unwritten, opens its short section with prose, keeps its tables to four columns and has the four core personas in its matrix; at least one of four criteria that need a running site is left untested; and two of the site's own files are unchanged.
+- 2 check that the merge script and the last phase check were started on the workspace. They cannot see whether the check passed.
+- 3 are still judged by a language model, on short text only: the closing reply, and the prose file for the four scores and for saying that nobody confirmed the audit's choices.
 
 The themed site has 11 graders of the same kinds. What they cannot see is listed here, because a pattern is not a reader:
 

@@ -10,11 +10,15 @@ the same every time, and it sees the whole file. This script is the one place th
   python3 evals/test_graders.py --write    write the grader files anew
 
 A seeded failure counts as found by the rule of grade_findings.py: a finding block cites the criterion, its
-"where" line names the file, and its title or problem text holds one of the keywords. One thing is stricter
-here: only tiers 1 and 2 have finding blocks in the report, so a seeded failure filed in tier 3 is not found.
-Every seeded failure is a tier 1 or 2 one, so that is a miss worth seeing. Whether it is 1 or 2 is not part
-of the rule; three graders below hold a finding to its tier where the tier is not a matter of taste.
-The graders written by hand (type llm, on the closing reply and on the short prose file) are left alone.
+"where" line names the file, and its title, problem or fix holds one of the keywords. The report is not the
+merged findings file, so two things are stricter here:
+  - only tiers 1 and 2 have finding blocks, so a seeded failure filed in tier 3 is not found. Every seeded
+    failure is a tier 1 or 2 one, so that is a miss worth seeing;
+  - a block names at most three places, so a finding whose only evidence in the right file is its fourth
+    place is not found.
+Whether the tier is 1 or 2 is not part of the rule; three graders below hold a finding to more than that.
+Every grader that is not of type llm is defined here, and --write removes any other. The ones of type llm
+are written by hand and listed in BY_HAND.
 
 Patterns stay inside what JavaScript and Python regular expressions share, because the runner uses the first
 and this check the second. Standard library only.
@@ -44,7 +48,7 @@ def esc(s):
     return re.sub(r"[.*+?^${}()|\[\]\\]", lambda m: "\\" + m.group(0), s)
 
 
-def block(tier="[12]", sc=None, file=None, words=(), anywhere=()):
+def block(tier="[12]", sc=None, file=None, words=(), anywhere=(), fix=()):
     """A finding block of this tier that cites the criterion, names the file and uses one of the words."""
     p = HEAD % tier
     if sc:
@@ -52,7 +56,9 @@ def block(tier="[12]", sc=None, file=None, words=(), anywhere=()):
     if file:
         p += rf"(?={REST}\n{esc(L['f_where'])}: [^\n]*{esc(file)})"
     if words:
-        p += rf"(?=(?:[^\n]*|{REST}\n{esc(L['f_problem'])}: [^\n]*)(?:{'|'.join(map(esc, words))}))"   # title or problem
+        # in the title, in the problem line, or from the fix line on: what grade_findings.py reads
+        p += rf"(?=(?:[^\n]*|{REST}\n{esc(L['f_problem'])}: [^\n]*|{REST}\n{esc(L['f_fix'])}: {REST})(?:{'|'.join(map(esc, words))}))"
+    p += "".join(rf"(?={REST}\n{esc(L['f_fix'])}: {REST}(?:{a}))" for a in fix)
     return p + "".join(rf"(?={REST}(?:{a}))" for a in anywhere)
 
 
@@ -60,32 +66,40 @@ def regex(pattern, path=REPORT, match=None):
     return {"type": "regex", "target": f"{{ source: file, path: {path} }}", "pattern": pattern, "flags": "i", **({"match": match} if match else {})}
 
 
-def ran(script):
-    return {"type": "tool_used", "tool": "Bash", "input_match": script}
+def ran(script, then=""):
+    """The script was started on a workspace, not merely named: no pipe or next command between the two."""
+    return {"type": "tool_used", "tool": "Bash", "input_match": rf"{script}\.py[^|;&]*\.a11y-audit{then}"}
 
 
 OWNED = rf"### (?:{esc(L['upstream_h'])}|{esc(L['accepted_h'])}) \(\d+\)"
-HEX = r"#(?!%s\b)[0-9a-f]{6}\b"
+# a row of the table of proposed colours: the colour as it is, and one to replace it that is another colour
+NEW_COLOUR = r"\| T2-\d+: [^|\n]*\| #9a9a9a \| #(?!9a9a9a)[0-9a-f]{3,8} \|"
+BY_HAND = {"full-audit-fixture-site": ["prose-gives-a-score-now-and-after-each-tier", "prose-says-nobody-confirmed-the-choices",
+                                       "reply-is-dutch-short-and-points-to-the-report"],
+           "themed-site-fix-ownership": ["reply-is-dutch-short-and-points-to-the-report"]}
 
 
 def full():
     g = {
         "report-is-written": {"type": "file_exists", "path": REPORT},
-        "report-has-three-tiers-in-dutch": regex(rf"\n## {esc(L['t1'])}\n[\s\S]*\n## {esc(L['t2'])}\n[\s\S]*\n## {esc(L['t3'])}\n"),
-        "report-opens-in-short-before-any-table": regex(rf"^# [^\n]+\n+## {esc(L['short'])}\n+[^|#\s]"),
+        # the renderer was told the language, and the agents wrote in it
+        "report-is-rendered-in-dutch": regex(rf"\n## {esc(L['t1'])}\n[\s\S]*\n## {esc(L['t2'])}\n[\s\S]*\n## {esc(L['t3'])}\n"),
+        "findings-are-written-in-dutch": regex(rf"\n{esc(L['f_problem'])}: [^\n]*\b(?:het|een|niet|geen|wordt|zijn|deze)\b"),
+        "report-leaves-nothing-unwritten": regex(r"<!--", match="not_contains"),
+        "report-opens-in-short-with-prose": regex(rf"^# [^\n]+\n+## {esc(L['short'])}\n+[^|#\s<-]"),
         "report-tables-have-at-most-four-columns": regex(r"(?:^|\n)\|(?:[^|\n]*\|){5,}[ \t]*(?=\n|$)", match="not_contains"),
         "report-has-all-four-core-personas-in-the-matrix": regex(
             rf"\| {esc(L['flow'])} \| {esc(L['persona'])} \| {esc(L['result'])} \|" + "".join(
                 rf"(?=[\s\S]*\| {p} \|)" for p in ("screen-reader", "low-vision", "motor-voice", "cognitive"))),
-        "report-says-personas-are-simulations": regex("simulatie"),
-        "coverage-leaves-a-runtime-criterion-untested": regex(r"\| 2\.4\.11 \|[^\n]*\| not-tested \|", path=f"{WS}/coverage.md"),
+        # reflow, text spacing, content on hover, focus not obscured: a static run cannot pass all four
+        "coverage-leaves-a-runtime-criterion-untested": regex(r"\| (?:1\.4\.10|1\.4\.12|1\.4\.13|2\.4\.11) \|[^\n]*\| not-tested \|", path=f"{WS}/coverage.md"),
         "site-html-is-left-as-it-was": regex(r"<html>", path="site/index.html"),
         "site-css-is-left-as-it-was": regex(r"\*:focus \{ outline: none; \}", path="site/styles.css"),
-        "ran-the-merge-script": ran(r"merge_findings\.py"),
-        "ran-the-last-phase-check": ran(r"check_phase\.py.* 6\b"),
+        "ran-the-merge-script": ran("merge_findings"),
+        "ran-the-last-phase-check": ran("check_phase", r"\S* 6\b"),
         "tier-1-holds-the-missing-lang": regex(block("1", r"3\.1\.1", words=["lang"])),
-        "tier-1-replaces-outline-none-with-focus-visible": regex(block("1", r"2\.4\.7", "styles.css", anywhere=["focus-visible"])),
-        "tier-2-gives-the-muted-text-a-new-colour": regex(block("2", r"1\.4\.3", "styles.css", anywhere=["#9a9a9a", HEX % "9a9a9a|ffffff"])),
+        "tier-1-fixes-outline-none-with-focus-visible": regex(block("1", r"2\.4\.7", "styles.css", fix=["focus-visible"])),
+        "tier-2-proposes-a-new-colour-for-the-muted-text": regex(NEW_COLOUR),
     }
     for i in json.loads((FULL / "ground-truth.json").read_text(encoding="utf-8"))["known_failures"]:
         slug = re.sub(r"[^a-z0-9]+", "-", i["keywords"][0].lower()).strip("-") or "x"
@@ -106,7 +120,7 @@ def themed():
         "finds-the-anchor-in-the-heading-hook": regex(block(file="render-heading")),
         "finds-outline-none-in-the-project-css": regex(block(file="custom.css", anywhere=["outline"])),
         "finds-the-link-colour-or-missing-underline": regex(block(file="custom.css", anywhere=[r"--link|underline|onderstre"])),
-        "gives-the-muted-colour-a-replacement": regex(block(sc=r"1\.4\.3", file="custom.css", anywhere=["muted", r"#[0-9a-f]{6}\b"])),
+        "proposes-a-new-colour-for-the-muted-text": regex(NEW_COLOUR),
     }
 
 
@@ -130,12 +144,15 @@ def passes(spec, root: Path):
 # ---- a workspace made by the real scripts ------------------------------------------------------------------
 
 def finding(n, sc, file, tier, word, **over):
-    f = {"id": f"ORC-{n:03d}", "fingerprint": f"seeded-{n}@{file}", "title": f"{word}", "description": f"Beschrijving {word}.",
+    f = {"id": f"ORC-{n:03d}", "fingerprint": f"seeded-{n}@{file}", "title": f"{word}", "description": f"Het gaat om {word}.",
          "severity": "serious", "evidence": [{"file": file, "lines": "1"}], "wcag": [{"sc": sc}], "affected_users": ["screen-reader"],
          "visual_impact": {1: "none", 2: "subtle", 3: "significant"}[tier], "proposed_tier": tier, "tier_rationale": "Klein.",
          "fix": {"ownership": "project", "summary": "Herstel."}, "effort": "S", "confidence": "high", "verify": "Kijk."}
     f.update(over)
     return f
+
+
+MUTED = {"fg": "#9a9a9a", "bg": "#ffffff", "ratio": 2.81, "required": 4.5, "suggested_fg": "#767676", "suggested_ratio": 4.54, "delta_e_ok": 0.06}
 
 
 def audit(case: Path, findings, personas=("screen-reader", "low-vision", "motor-voice", "cognitive")):
@@ -169,8 +186,21 @@ def test_the_grader_files_are_the_ones_defined_here():
         want = {f"{name}.md": text_of(spec) for name, spec in specs().items()}
         have = {p.name: p.read_text(encoding="utf-8") for p in (case / "graders").glob("*.md") if "type: llm" not in p.read_text(encoding="utf-8")}
         assert have == want, f"{case.name}: run this script with --write (differs: {sorted(set(have) ^ set(want)) or [n for n in want if have[n] != want[n]]})"
+        by_hand = sorted(p.stem for p in (case / "graders").glob("*.md") if "type: llm" in p.read_text(encoding="utf-8"))
+        assert by_hand == BY_HAND[case.name], f"{case.name}: the graders written by hand are {by_hand}"
         for p in (case / "graders").glob("*.md"):
-            assert "focus: trace" not in p.read_text(encoding="utf-8"), f"{p.name} lets a judge read the trace, of which it sees only the ends"
+            assert not re.search(r"(?:focus|target):\W*trace", p.read_text(encoding="utf-8")), \
+                f"{p.name} lets a judge read the trace, of which it sees only the ends"
+
+
+def test_a_script_counts_as_run_only_when_it_was_started_on_a_workspace():
+    merge, check = (re.compile(full()[k]["input_match"]) for k in ("ran-the-merge-script", "ran-the-last-phase-check"))
+    cmd = lambda c: json.dumps({"command": c})          # the runner matches against the JSON-encoded input
+    assert merge.search(cmd('python3 "/p/scripts/merge_findings.py" site/.a11y-audit --ownership "/p/references/wcag-ownership.md"'))
+    assert not merge.search(cmd("cat /p/scripts/merge_findings.py")) and not merge.search(cmd("python3 /p/scripts/merge_findings.py --help"))
+    assert not merge.search(cmd("grep -c problems /p/scripts/merge_findings.py; ls site/.a11y-audit")), "naming the script and the workspace in one line is not running it"
+    assert check.search(cmd('python3 "/p/scripts/check_phase.py" "site/.a11y-audit" 6')) and check.search(cmd("python3 /p/check_phase.py site/.a11y-audit 6 && echo ok"))
+    assert not check.search(cmd("python3 /p/check_phase.py site/.a11y-audit 5 | head -n 6")) and not check.search(cmd("python3 /p/check_phase.py site/.a11y-audit 4"))
 
 
 def test_every_seeded_failure_is_found_by_its_own_grader_and_by_no_other():
@@ -185,12 +215,18 @@ def test_every_seeded_failure_is_found_by_its_own_grader_and_by_no_other():
         assert got == own, f"{i['id']} alone satisfies {got}"
         shutil.rmtree(root)
         other_file = next(j["file"] for j in items if j["file"] != i["file"])
-        for what, f in (("another criterion", dict(seeded[n], wcag=[{"sc": "1.2.1"}])),
-                        ("another file", dict(seeded[n], evidence=[{"file": other_file, "lines": "1"}])),
-                        ("the keyword only in the fix", dict(seeded[n], title="Iets", description="Beschrijving.",
-                                                             fix={"ownership": "project", "summary": i["keywords"][0]}))):
+        kw, there, elsewhere = i["keywords"][0], {"file": i["file"], "lines": "1"}, {"file": other_file, "lines": "1"}
+        for what, found, f in (
+                ("another criterion", False, dict(seeded[n], wcag=[{"sc": "1.2.1"}])),
+                ("another file", False, dict(seeded[n], evidence=[elsewhere])),
+                ("no keyword", False, dict(seeded[n], title="Iets", description="Het is zo.")),
+                ("its file as the fourth place", False, dict(seeded[n], evidence=[elsewhere, elsewhere, elsewhere, there])),
+                ("the keyword only in the fix", True, dict(seeded[n], title="Iets", description="Het is zo.", fix={"ownership": "project", "summary": kw})),
+                # as an agent writes it: a sentence for a title, a second criterion first, its file as the third place, a compact block
+                ("a finding as an agent writes it", True, dict(seeded[n], title=f"Een lange titel waarin {kw} pas halverwege staat", severity="minor",
+                                                              wcag=[{"sc": "1.2.1"}, {"sc": i["sc"]}], evidence=[elsewhere, elsewhere, there]))):
             root = audit(FULL, [f])
-            assert not passes(finds[own[0]], root), f"{i['id']} counts as found with {what}"
+            assert passes(finds[own[0]], root) is found, f"{i['id']} is {'not ' if found else ''}found with {what}"
             shutil.rmtree(root)
 
 
@@ -200,16 +236,36 @@ def test_a_complete_audit_passes_every_grader_and_an_empty_one_fails_the_ones_ab
     plain = audit(FULL, [dict(f) for f in seeded])
     seeded = [dict(f, fix=dict(f["fix"])) for f in seeded]
     seeded[12]["fix"]["summary"] = "Gebruik :focus-visible."                    # GT-13, outline none
-    seeded[10]["description"] = "De kleur #9a9a9a is te licht."                 # GT-11, muted text
-    seeded[10]["fix"]["summary"] = "Maak er #767676 van."
+    seeded[10]["colours"] = MUTED                                              # GT-11, muted text
     good, empty = audit(FULL, seeded), audit(FULL, [], personas=())
     assert [n for n, s in full().items() if n.startswith("tier-") and passes(s, plain)] == ["tier-1-holds-the-missing-lang"], \
-        "a fix without :focus-visible or without a new colour passes its grader"
+        "a fix without :focus-visible or without a proposed colour passes its grader"
     shutil.rmtree(plain)
     same = [dict(f) for f in seeded]
-    same[10] = dict(same[10], fix={"ownership": "project", "summary": "Maak #9a9a9a donkerder, niet #ffffff."})
+    same[10] = dict(same[10], colours={k: v for k, v in MUTED.items() if not k.startswith("suggested")},
+                    fix={"ownership": "project", "summary": "Maak #9a9a9a donkerder, bijvoorbeeld #767676."})
+    same[12] = dict(same[12], description="Het ontbreekt aan een regel met :focus-visible.", fix={"ownership": "project", "summary": "Haal de regel weg."})
+    same[0] = dict(same[0], description="The page does not say which language it is in.")
     same = audit(FULL, same)
-    assert not passes(full()["tier-2-gives-the-muted-text-a-new-colour"], same), "naming the old colour again counts as a replacement"
+    assert not [n for n, s in full().items() if n.startswith("tier-") and n != "tier-1-holds-the-missing-lang" and passes(s, same)], \
+        "a colour named in the text, or :focus-visible named in the problem, passes as a fix"
+    assert passes(full()["findings-are-written-in-dutch"], same), "one English finding among Dutch ones fails the language grader"
+    cov = same / WS / "coverage.md"
+    cov.write_text(cov.read_text(encoding="utf-8").replace("| not-tested |", "| pass |"), encoding="utf-8")
+    assert not passes(full()["coverage-leaves-a-runtime-criterion-untested"], same), "a matrix that passes everything unseen passes"
+    opens = re.compile(full()["report-opens-in-short-with-prose"]["pattern"], re.I)
+    head = f"# Rapport\n\n## {L['short']}\n\n"
+    assert opens.search(head + "De site scoort nu een 5.") and not [x for x in ("<!-- WRITE: [in-short] -->", "- een lijst", "| een | tabel |", "### kop")
+                                                                    if opens.search(head + x)], "the short section may open with something other than prose"
+    with (same / REPORT).open("a", encoding="utf-8") as f:
+        f.write("\n<!-- WRITE: [legal] only if raised -->\n")
+    assert not passes(full()["report-leaves-nothing-unwritten"], same), "a report with a part still to write passes"
+    three = audit(FULL, seeded, personas=("screen-reader", "low-vision", "motor-voice"))
+    assert not passes(full()["report-has-all-four-core-personas-in-the-matrix"], three), "three of the four core personas pass"
+    shutil.rmtree(three)
+    english = audit(FULL, [dict(f, description="The page does not say it.") for f in seeded])
+    assert not passes(full()["findings-are-written-in-dutch"], english), "findings in English pass as Dutch"
+    shutil.rmtree(english)
     with (same / REPORT).open("a", encoding="utf-8") as f:
         f.write("\n| a | b | c | d | e |\n|---|---|---|---|---|\n| 1 | 2 | 3 | 4 | 5 |\n")
     assert not passes(full()["report-tables-have-at-most-four-columns"], same), "a table of five columns passes"
@@ -218,7 +274,7 @@ def test_a_complete_audit_passes_every_grader_and_an_empty_one_fails_the_ones_ab
         if spec["type"] != "regex":
             continue
         assert passes(spec, good), f"{name} fails on a complete audit"
-        about_findings = name.startswith(("finds-", "tier-", "report-has-all-four"))
+        about_findings = name.startswith(("finds-", "tier-", "report-has-all-four", "findings-are-written"))
         assert passes(spec, empty) is not about_findings, f"{name} {'passes' if about_findings else 'fails'} on an audit without findings or personas"
     other = audit(FULL, [dict(f, **({"visual_impact": "subtle", "proposed_tier": 2} if f["proposed_tier"] == 1 else
                                     {"visual_impact": "none", "proposed_tier": 1})) for f in seeded])
@@ -238,7 +294,7 @@ def test_the_themed_site_graders_tell_ownership_apart():
                 finding(2, "1.3.1", "layouts/_default/_markup/render-heading.html", 1, "anker"),
                 finding(3, "2.4.7", css, 1, "focus", description="outline: none haalt de focusring weg."),
                 finding(4, "1.4.1", css, 2, "links", description="De kleur --link valt weg zonder onderstreping."),
-                finding(5, "1.4.3", css, 2, "muted", description="--muted is te licht.", fix={"ownership": "project", "summary": "Maak er #5f5f5f van."})]
+                finding(5, "1.4.3", css, 2, "muted", description="--muted is te licht.", colours=MUTED)]
     for own in ("upstream", "accepted", "project"):
         root = audit(THEMED, fs(own), personas=("screen-reader", "low-vision"))
         (root / WS / "stack-profile.md").write_text("Vendored: themes/paper\n", encoding="utf-8")
@@ -261,8 +317,9 @@ def test_the_themed_site_graders_tell_ownership_apart():
 if __name__ == "__main__":
     if sys.argv[1:] == ["--write"]:
         for case, specs in CASES.items():
-            for p in (case / "graders").glob("*.md"):
-                if "type: llm" not in p.read_text(encoding="utf-8") or "focus: trace" in p.read_text(encoding="utf-8"):
+            for p in sorted((case / "graders").glob("*.md")):
+                if "type: llm" not in p.read_text(encoding="utf-8") and p.stem not in specs():
+                    print(f"{case.name}: removed {p.name}, which is not defined here")
                     p.unlink()
             for name, spec in specs().items():
                 (case / "graders" / f"{name}.md").write_text(text_of(spec), encoding="utf-8")
