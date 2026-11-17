@@ -143,6 +143,25 @@ def test_phase_4_wants_every_expert_every_criterion_and_a_current_merge():
     merge(ws)
     one(ws, "4", "marks 2.1.2 not-tested or n/a without a reason")
 
+    data = json.loads(good)
+    data["findings"][0]["evidence"] = [{"file": "src/gone.html", "lines": "1", "snippet": "<div onclick>"}]      # a citation that does not exist
+    f.write_text(json.dumps(data), encoding="utf-8")
+    merge(ws)
+    one(ws, "4", "the merge lists 1 problem to resolve")
+    assert "--repo <dir>" in gaps(ws, "4")[0], "a cited file that is not found can also mean the merge lacked --repo"
+    data["findings"][0]["proposed_tier"] = 3                                   # and a tier that contradicts the visual impact
+    f.write_text(json.dumps(data), encoding="utf-8")
+    merge(ws)
+    one(ws, "4", "the merge lists 2 problems to resolve")
+    data["findings"][0]["fix"] = "Use a button."                               # a fix as plain text: converting it is a note and does not count,
+    f.write_text(json.dumps(data), encoding="utf-8")
+    merge(ws)
+    assert "the merge lists 3 problems to resolve" in gaps(ws, "4")[0], gaps(ws, "4")
+    assert "--repo" in gaps(ws, "4")[0] and gaps(ws, "4")[0].count("not found in the repository") == 1, "only the first problem is quoted"      # but the ownership the merge then has to assume does
+    f.write_text(good, encoding="utf-8")
+    merge(ws)
+    assert gaps(ws, "4") == [], "the phase stays shut after the problems were resolved"
+
     f.write_text(good, encoding="utf-8")                                       # edited after the merge
     one(ws, "4", "older than operate.json")
     merge(ws)
@@ -174,6 +193,15 @@ def test_phase_5_wants_the_personas_of_the_mode_and_a_merge_after_them():
     touch_after(ws / "personas" / "low-vision-user.md", ws / "findings" / "_merged.json")
     one(ws, "5", "older than low-vision-user.md")
     through_phase_5(ws)                                                        # writes the files anew, then merges
+    new = {"id": "PER-low-vision-001", "title": "The price is too faint", "severity": "serious", "location": "the pricing page", "fix": "Darker."}
+    lv = ws / "personas" / "low-vision-user.md"
+    lv.write_text("# low-vision-user\n\n## New findings\n```json\n" + json.dumps([new]) + "\n```\n\n## end\n", encoding="utf-8")
+    merge(ws)
+    one(ws, "5", "PER-low-vision-001: no visual_impact and no tier")           # the one thing the merge cannot settle for a persona
+    assert "--repo" not in gaps(ws, "5")[0], "a persona's place is not a file that was not found"
+    lv.write_text(lv.read_text(encoding="utf-8").replace('"severity"', '"tier": "T2", "severity"'), encoding="utf-8")
+    merge(ws)
+    assert gaps(ws, "5") == [], gaps(ws, "5")                                  # no criterion, no file: settled, the phase is open
     m = ws / "briefs" / "_agents.json"
     m.write_text(m.read_text(encoding="utf-8").replace('"mini"', '"lean"'), encoding="utf-8")
     one(ws, "5", "no persona report from motor-voice-user, cognitive-user")

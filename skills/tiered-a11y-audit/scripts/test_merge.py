@@ -285,12 +285,44 @@ def test_a_personas_words_are_not_checked_as_a_quote_from_the_file():
         assert not [p for p in merged["problems"] if "location" in p], merged["problems"]
 
 
-def test_a_problem_found_after_the_files_are_written_is_still_named():
+def test_a_previous_audit_that_is_not_there_is_a_problem_in_the_files_and_on_stderr():
     with tempfile.TemporaryDirectory() as d:
         ws = claims_workspace(d, [finding("OK-001")])
-        r = subprocess.run([sys.executable, str(HERE / "merge_findings.py"), str(ws), "--ownership", str(OWNERSHIP),
-                            "--previous", str(Path(d) / "nowhere")], capture_output=True, text=True)
-        assert "1 problems to resolve" in r.stdout and "--previous given but" in r.stderr, r.stdout + r.stderr
+        gone, broken = Path(d) / "nowhere", Path(d) / "broken"
+        broken.mkdir()
+        (broken / "_merged.json").write_text("[1, 2", encoding="utf-8")
+        for prev, word in ((gone, "--previous given but"), (broken, "unreadable or not an object")):
+            r = subprocess.run([sys.executable, str(HERE / "merge_findings.py"), str(ws), "--ownership", str(OWNERSHIP),
+                                "--previous", str(prev)], capture_output=True, text=True)
+            assert "1 problems to resolve" in r.stdout and word in r.stderr, r.stdout + r.stderr
+            listed = json.loads((ws / "findings" / "_merged.json").read_text())["problems"]
+            assert len(listed) == 1 and word in listed[0], listed          # the phase check reads this list, not stderr
+            assert word in (ws / "findings" / "_merged.md").read_text(encoding="utf-8")
+
+
+def test_a_personas_criterion_is_settled_and_an_experts_is_asked_about():
+    with tempfile.TemporaryDirectory() as d:
+        ws = claims_workspace(d, [finding("OK-001"), finding("AAA-001", wcag=[{"sc": "2.4.9"}]), finding("NONE-001", wcag=[])])
+        (ws / "personas").mkdir()
+        base = {"severity": "serious", "visual_impact": "none", "proposed_tier": 1, "fix": {"summary": "Say where I am."}}
+        (ws / "personas" / "cognitive-user.md").write_text("# Cognitive user\n\n## New findings\n```json\n" + json.dumps([
+            {**base, "id": "PER-cognitive-001", "title": "No criterion", "location": "the contact page"},
+            {**base, "id": "PER-cognitive-002", "title": "Triple A only", "wcag": [{"sc": "2.4.9"}],
+             "evidence": [{"file": "src/page.html", "lines": "3"}]},
+            {**base, "id": "PER-cognitive-003", "title": "One of each", "wcag": [{"sc": "2.4.9"}, {"sc": "2.1.1"}],
+             "evidence": [{"file": "src/page.html", "lines": "3"}]}]) + "\n```\n\n## end\n", encoding="utf-8")
+        r = merge(ws)
+        merged = json.loads((ws / "findings" / "_merged.json").read_text())
+        by = {f["id"]: f for f in merged["findings"]}
+        assert not [p for p in merged["problems"] if p.startswith("PER-")], merged["problems"]
+        assert by["PER-cognitive-001"]["best_practice_only"] is True and by["PER-cognitive-001"]["evidence"] == [{"url": "the contact page"}], by["PER-cognitive-001"]
+        assert by["PER-cognitive-002"]["wcag"] == [] and by["PER-cognitive-002"]["best_practice_only"] is True, by["PER-cognitive-002"]
+        assert [w["sc"] for w in by["PER-cognitive-003"]["wcag"]] == ["2.1.1"] and not by["PER-cognitive-003"].get("best_practice_only"), by["PER-cognitive-003"]
+        said = " | ".join(merged["notes"])
+        assert "PER-cognitive-002: 2.4.9 is not" in said and "PER-cognitive-001: a persona finding without" in said, merged["notes"]
+        # the same two faults in an expert's finding still need a decision
+        assert [p for p in merged["problems"] if p.startswith("AAA-001: 2.4.9 is not")], merged["problems"]
+        assert [p for p in merged["problems"] if p.startswith("NONE-001: no WCAG criterion")], merged["problems"]
 
 
 def test_a_coverage_reason_is_kept_under_either_key():
