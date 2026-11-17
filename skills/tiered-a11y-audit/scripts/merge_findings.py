@@ -204,6 +204,7 @@ def verify_claims(f: dict, owners: dict, repo: Path, problems: Log) -> None:
     lines it never opened and does contrast arithmetic in its head. None of that needs
     judgement to catch, so none of it should reach the orchestrator unflagged."""
     fid = f["id"]
+    persona = bool(f.get("persona_origin"))     # its criteria are advisory (personas/_protocol.md): settled here, not asked about
 
     # Criterion: the ownership table is the authority on which criteria count and on their names.
     for sc in f["wcag"]:
@@ -211,6 +212,9 @@ def verify_claims(f: dict, owners: dict, repo: Path, problems: Log) -> None:
         num = m.group(0) if m else str(sc.get("sc") or "?")
         sc["sc"] = num
         meta = owners.get(num)
+        if meta is None and persona:
+            problems.note(f"{fid}: {num} is not a WCAG 2.2 level A or AA criterion; a persona's citation is advisory, left out")
+            continue
         if meta is None:
             problems.append(f"{fid}: {num} is not a WCAG 2.2 level A or AA criterion (AAA, obsolete or mistyped); "
                             "cite the A or AA criterion if one applies, it is what the coverage matrix counts")
@@ -218,6 +222,11 @@ def verify_claims(f: dict, owners: dict, repo: Path, problems: Log) -> None:
         if sc.get("level") not in (None, meta["level"]):
             problems.note(f"{fid}: {num} given as level {sc['level']}, it is level {meta['level']}; corrected")
         sc["name"], sc["level"] = meta["name"], meta["level"]
+    if persona:
+        f["wcag"] = [sc for sc in f["wcag"] if sc["sc"] in owners]
+        if not f["wcag"] and f.get("best_practice_only") is not True:
+            f["best_practice_only"] = True
+            problems.note(f"{fid}: a persona finding without a level A or AA criterion; kept as an observation outside the coverage matrix")
     if not f["wcag"] and f.get("best_practice_only") is not True:
         problems.append(f"{fid}: no WCAG criterion and not marked best_practice_only; cite one or set the marker")
 
@@ -284,7 +293,7 @@ def normalise_persona_finding(raw: dict, persona: str, problems: Log, seq: int =
         loc = f.pop("location", None)
         if loc:
             m = re.match(r"([^\s:(]+\.[a-z0-9]+)(?::(\d+(?:-\d+)?))?", str(loc))
-            ev = {"file": m.group(1), "lines": m.group(2)} if m else {"file": str(loc)}
+            ev = {"file": m.group(1), "lines": m.group(2)} if m else {"url": str(loc)}   # a place ("the contact page"), not a file to look up
         if f.get("evidence_text"):
             ev["observation"] = str(f.pop("evidence_text"))    # a persona's words, not a quote the claim check can look up
         f["evidence"] = [ev] if ev else []
@@ -399,6 +408,20 @@ def main():
         print("no criteria parsed from --ownership; cannot build the coverage matrix", file=sys.stderr)
         return 2
     problems = Log()
+    prev = None
+    if a.previous:      # looked at before anything is written, so that a problem with it is in the files and not only on stderr
+        prev_path = Path(a.previous) / "findings" / "_merged.json"
+        if not prev_path.exists():
+            prev_path = Path(a.previous) / "_merged.json"
+        if not prev_path.exists():
+            problems.append(f"--previous given but {prev_path} not found; no delta written")
+        else:
+            prev = read_json(prev_path)
+            if not isinstance(prev, dict):
+                problems.append(f"previous {prev_path.name} unreadable or not an object; no delta written")
+                prev = None
+        if prev is None:
+            print(f"!! {problems[-1]}", file=sys.stderr)
     persona_links, persona_findings, flow_failures = parse_personas(ws / "personas", problems)
     dedupe = {}
     if (fdir / "_dedupe.json").exists():
@@ -679,16 +702,7 @@ def main():
 
     # --- re-audit delta -------------------------------------------------------------------
     if a.previous:
-        prev_path = Path(a.previous) / "findings" / "_merged.json"
-        if not prev_path.exists():
-            prev_path = Path(a.previous) / "_merged.json"
-        if prev_path.exists():
-            prev = read_json(prev_path)
-            if not isinstance(prev, dict):
-                problems.append(f"previous {prev_path.name} unreadable or not an object; no delta written")
-                print(f"!! {problems[-1]}", file=sys.stderr)
-                prev = None
-        if prev_path.exists() and prev is not None:
+        if prev is not None:
             prev_fps = {f["fingerprint"].strip().lower(): f for f in prev.get("findings", []) if f.get("fingerprint")}
             prev_resolved = {fp.lower() for fp in (prev.get("delta") or {}).get("resolved", [])}
             cur_fps = {f["fingerprint"].strip().lower(): f for f in merged}
@@ -709,9 +723,6 @@ def main():
             dl += ["Verify every 'resolved' entry in code before reporting it: an absent fingerprint can also mean the agent chose a different slug this run."]
             (ws / "delta.md").write_text("\n".join(dl), encoding="utf-8")
             print(f"delta: resolved {len(resolved)}, still open {len(still_open)}, regressed {len(regressed)}, new {len(new)}")
-        else:
-            problems.append(f"--previous given but {prev_path} not found")
-            print(f"!! {problems[-1]}", file=sys.stderr)
 
     print(f"{len(all_findings)} raw findings from {len(agents)} agents (+{len(persona_findings)} from personas) → {len(merged)} merged; "
           f"{len(cand)} root-cause clusters; coverage {dict(counts)}; {len(conflicts)} conflicts; {len(problems)} problems to resolve, {len(problems.notes)} settled by the merge")
