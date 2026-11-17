@@ -159,6 +159,7 @@ The next list gives every directory that matters, with what it holds.
 - `skills/tiered-a11y-audit/agents/personas/` holds the eight personas and the protocol they share.
 - `skills/tiered-a11y-audit/references/` holds the tiering rules, the finding schema, the criterion ownership table, the framework playbooks, the stack profile template, the report template, the tooling notes, and the report labels per language.
 - `skills/tiered-a11y-audit/scripts/` holds the preflight, the detector, the pattern scanner, the colour extractor, the contrast tool, the accessibility-tree digest, the runtime scan, the briefing builder, the phase check, the merge and coverage script, the renderer that writes the draft and assembles the report, the linter that checks it, the exporter, the grader for the evaluation fixture, and eight self-checks that cover most of them.
+- `.github/workflows/self-checks.yml` runs the eight self-checks and the check of this file on every pull request, on Python 3.9 and on the current version. It calls no model and costs nothing.
 - `evals/` holds the four test cases with their fixture sites. It stays at the repository root, because that is where the evaluation runner looks.
 
 ## Contributing
