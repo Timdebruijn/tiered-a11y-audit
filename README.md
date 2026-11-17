@@ -89,7 +89,9 @@ One run is a sign and not a rate. The two runs before it on the same day, with n
 
 ### The one miss was found under another criterion
 
-The social links without an accessible name were reported, against criteria 1.1.1 and 2.4.4 where the ground truth expects 4.1.2. By substance the result is 24 of 24. By the grader's rule, which requires the criterion to match, it is 23.
+The social links without an accessible name were reported, against criteria 1.1.1 and 2.4.4 where the ground truth expected 4.1.2. By substance the result is 24 of 24. By the grader's rule, which requires the criterion to match, it is 23.
+
+Since 17 November the ground truth accepts 2.4.4 for this item as well as 4.1.2, because a link without a name fails both. The figures on this page stand as they were scored at the time.
 
 ### Every finding now names a criterion
 
@@ -129,7 +131,7 @@ Up to and including release 1.1.1 every grader of the two audit cases judged the
 
 The graders now read what the run wrote. Most of them are patterns on a file, which cost nothing, give the same answer every time and see the whole file. The lean audit has 41 graders:
 
-- 24 hold the report to the seeded failures, one each. A failure counts as found when a finding block cites its criterion, names its file and uses one of its keywords in the title, the problem or the fix. That is the rule of `grade_findings.py`, read from the report instead of the merged findings, which makes it stricter in two ways. Only tiers 1 and 2 have finding blocks, so a seeded failure filed in tier 3 counts as missed. And a block names at most three places, so a finding whose only evidence in the right file is its fourth place counts as missed too.
+- 24 hold the report to the seeded failures, one each. A failure counts as found when a finding block cites its criterion, or one of them where the ground truth lists several, names its file and uses one of its keywords in the title, the problem or the fix. That is the rule of `grade_findings.py`, read from the report instead of the merged findings, which makes it stricter in two ways. Only tiers 1 and 2 have finding blocks, so a seeded failure filed in tier 3 counts as missed. And a block names at most three places, so a finding whose only evidence in the right file is its fourth place counts as missed too.
 - 3 hold a finding to more than that: the missing language is in tier 1, the fix for the focus outline in tier 1 names `:focus-visible`, and the table of proposed colours in tier 2 gives the muted text another colour.
 - 9 check the report and the site: the report exists, is rendered in Dutch with findings written in Dutch, leaves no part unwritten, opens its short section with prose, keeps its tables to four columns and has the four core personas in its matrix; and two of the site's own files are unchanged.
 - 2 check that the merge script and the last phase check were started on the workspace. They cannot see whether the check passed.
@@ -143,7 +145,7 @@ The themed site has 11 graders of the same kinds. What they cannot see is listed
 
 `python3 evals/test_graders.py` defines the pattern graders and checks them against reports the real merge and renderer produce: every seeded failure is found by its own grader and by no other, and not when the criterion, the file or the keyword is wrong. That check does not replace a run.
 
-One run has been scored with these graders, on 17 November 2026, with one run per case and without the arm that leaves the plugin out. The themed site passed all 11. The lean audit passed 39 of the 42 it had then, at 4 dollars 31. Two of the three failures were seeded failures, the same two that `grade_findings.py` reported as missed on that run's merged findings, so the two ways of scoring agreed on 22 of 24. The missing skip link was not reported: the audit judged criterion 2.4.1 met, because the page has `main` and `nav` landmarks. The social links were reported under 1.1.1 and 2.4.4 again. The third failure was a grader and not the audit. It wanted at least one of four criteria that need a running site left untested, and the audit gave each of the four a verdict from the code: three failures with a finding, and one pass with the reason that the site has no content on hover. That grader is gone, which leaves the 41 above. Whether the scores are stable over several runs is unmeasured.
+One run has been scored with these graders, on 17 November 2026, with one run per case and without the arm that leaves the plugin out. The themed site passed all 11. The lean audit passed 39 of the 42 it had then, at 4 dollars 31. Two of the three failures were seeded failures, the same two that `grade_findings.py` reported as missed on that run's merged findings, so the two ways of scoring agreed on 22 of 24. The missing skip link was not reported: the audit judged criterion 2.4.1 met, because the page has `main` and `nav` landmarks. The social links were reported under 1.1.1 and 2.4.4 again. The ground truth has accepted 2.4.4 for them since. Scored again on the workspace that run left, `grade_findings.py` says 23 of 24 and the grader for the social links passes. The third failure was a grader and not the audit. It wanted at least one of four criteria that need a running site left untested, and the audit gave each of the four a verdict from the code: three failures with a finding, and one pass with the reason that the site has no content on hover. That grader is gone, which leaves the 41 above. Whether the scores are stable over several runs is unmeasured.
 
 ## Running the evaluation cases
 
