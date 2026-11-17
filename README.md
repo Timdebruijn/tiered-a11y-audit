@@ -85,7 +85,7 @@ A second warning about running the suite yourself. The ablation option defaults 
 
 The detection rate is 23 of 24, or 96 percent, on the fixture site. That is one run, on 16 November 2026, with Claude Code 2.1.319, the orchestrator on Opus and ten subagents on Sonnet, using static analysis only. It was scored by `grade_findings.py` against the ground-truth file that ships with the fixture.
 
-One run is a sign and not a rate. The two runs before it on the same day, with nearly the same pipeline, found 22 and 24. The first measured run, on 6 November and without subagents, found 21. The detail blocks below say what the number hides.
+One run is a sign and not a rate. The two runs before it on the same day, with nearly the same pipeline, found 22 and 24. The first measured run, on 6 November and without subagents, found 21. A run on 17 November, the first one scored with the graders described below, found 22. The detail blocks below say what the number hides.
 
 ### The one miss was found under another criterion
 
@@ -117,7 +117,7 @@ The next list gives the nine things this skill does not do, or does not yet know
 - **Tools find little.** Automated checks catch a minority of real issues. The expert lenses do the work, and the orchestrator verifies every blocker by opening the code or the page.
 - **One run per number.** Every figure above is a single run. Three runs on one day found 22, 23 and 24 of the 24 seeded failures, so read 96 percent as somewhere between 22 and 24.
 - **A small fixture.** It is four files and 252 lines, and one context without subagents already found 21 of the 24. What ten subagents add on a large codebase, where no single context can read everything, has no measurement behind it yet.
-- **Audit case scores unmeasured.** In the runs above 4 of the 21 graders of the lean audit passed, and that said more about the grading than about the audit. The graders of the two audit cases have been replaced since, and no run has been scored with the new ones. The detail block below explains both.
+- **Audit case scores: one run.** In the runs above 4 of the 21 graders of the lean audit passed, and that said more about the grading than about the audit. The graders of the two audit cases have been replaced since. One run on 17 November 2026 was scored with the new ones: 0.93 for the lean audit, 39 of 42 graders, and 1.00 for the themed site, 11 of 11. The detail block below explains both, and what the three failures were.
 - **Only Dutch is measured.** All four evaluation prompts are Dutch. The skill writes its findings and its report in the language you speak, and the fixed words of the report ship in English and Dutch, but no run in another language has been graded.
 - **Three stacks proven.** Those codebases have a real run behind them. Those are ESP32 firmware with HTML inside C++ strings, a React single-page application with canvas charts and a strict Content Security Policy, and a themed bilingual Hugo site. Other stacks have playbooks written for them but no run yet. Try it first on something you can afford to be wrong about, and read the feedback notes it leaves when something looked off.
 - **Scripts go in the scratch directory.** The runtime scan needs them there. Node resolves imports from the directory the script itself sits in, so a script left in the skill folder cannot find the installed packages. The skill handles this; anything hand-written has to do the same.
@@ -127,11 +127,11 @@ The next list gives the nine things this skill does not do, or does not yet know
 
 Up to and including release 1.1.1 every grader of the two audit cases judged the trace with a language model. Such a judge sees only the first 12 and the last 12 messages of a trace, which is a documented limit rather than a defect. A lean audit with ten subagents is several hundred messages, so the judge marked things absent that it never saw. It failed the grader for using the merge script in a run that ran that script more than once.
 
-The graders now read what the run wrote. Most of them are patterns on a file, which cost nothing, give the same answer every time and see the whole file. The lean audit has 42 graders:
+The graders now read what the run wrote. Most of them are patterns on a file, which cost nothing, give the same answer every time and see the whole file. The lean audit has 41 graders:
 
 - 24 hold the report to the seeded failures, one each. A failure counts as found when a finding block cites its criterion, names its file and uses one of its keywords in the title, the problem or the fix. That is the rule of `grade_findings.py`, read from the report instead of the merged findings, which makes it stricter in two ways. Only tiers 1 and 2 have finding blocks, so a seeded failure filed in tier 3 counts as missed. And a block names at most three places, so a finding whose only evidence in the right file is its fourth place counts as missed too.
 - 3 hold a finding to more than that: the missing language is in tier 1, the fix for the focus outline in tier 1 names `:focus-visible`, and the table of proposed colours in tier 2 gives the muted text another colour.
-- 10 check the report, the coverage file and the site: the report exists, is rendered in Dutch with findings written in Dutch, leaves no part unwritten, opens its short section with prose, keeps its tables to four columns and has the four core personas in its matrix; at least one of four criteria that need a running site is left untested; and two of the site's own files are unchanged.
+- 9 check the report and the site: the report exists, is rendered in Dutch with findings written in Dutch, leaves no part unwritten, opens its short section with prose, keeps its tables to four columns and has the four core personas in its matrix; and two of the site's own files are unchanged.
 - 2 check that the merge script and the last phase check were started on the workspace. They cannot see whether the check passed.
 - 3 are still judged by a language model, on short text only: the closing reply, and the prose file for the four scores and for saying that nobody confirmed the audit's choices.
 
@@ -141,7 +141,9 @@ The themed site has 11 graders of the same kinds. What they cannot see is listed
 - **The arm without the plugin.** It cannot pass graders that read the skill's own files, so on these two cases the difference between the arms says only that the pipeline ran. Run them with `--ablation none` to pay for one arm.
 - **Whether a finding is right.** A pattern sees that a criterion, a file and a word stand together, not that the finding is true or the fix sound.
 
-`python3 evals/test_graders.py` defines the pattern graders and checks them against reports the real merge and renderer produce: every seeded failure is found by its own grader and by no other, and not when the criterion, the file or the keyword is wrong. That check has not replaced a run. Whether the scores are stable over several runs is unmeasured.
+`python3 evals/test_graders.py` defines the pattern graders and checks them against reports the real merge and renderer produce: every seeded failure is found by its own grader and by no other, and not when the criterion, the file or the keyword is wrong. That check does not replace a run.
+
+One run has been scored with these graders, on 17 November 2026, with one run per case and without the arm that leaves the plugin out. The themed site passed all 11. The lean audit passed 39 of the 42 it had then, at 4 dollars 31. Two of the three failures were seeded failures, the same two that `grade_findings.py` reported as missed on that run's merged findings, so the two ways of scoring agreed on 22 of 24. The missing skip link was not reported: the audit judged criterion 2.4.1 met, because the page has `main` and `nav` landmarks. The social links were reported under 1.1.1 and 2.4.4 again. The third failure was a grader and not the audit. It wanted at least one of four criteria that need a running site left untested, and the audit gave each of the four a verdict from the code: three failures with a finding, and one pass with the reason that the site has no content on hover. That grader is gone, which leaves the 41 above. Whether the scores are stable over several runs is unmeasured.
 
 ## Running the evaluation cases
 
