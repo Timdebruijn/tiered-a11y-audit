@@ -201,7 +201,7 @@ The next list gives every directory that matters, with what it holds.
 
 - `.claude-plugin/plugin.json` is the plugin manifest. Without it the repository is not a plugin and the evaluation runner has nothing to load.
 - `.claude-plugin/marketplace.json` lists that one plugin, with the repository root as its source. It is what lets Claude Code install the plugin from GitHub.
-- `.claude-plugin/icon.png` is the plugin's icon, 1024 pixels square: a head on three widening tiers. A plugin directory shows it next to the name.
+- `.claude-plugin/icon.png` is the plugin's icon, 1024 pixels square: a figure with its arms out. A plugin directory shows it next to the name.
 - `skills/tiered-a11y-audit/SKILL.md` is the workflow itself, and the file Claude Code reads.
 - `skills/tiered-a11y-audit/agents/experts/` holds the six lenses, the framework-maximizer, and the protocol they share.
 - `skills/tiered-a11y-audit/agents/personas/` holds the eight personas and the protocol they share.
