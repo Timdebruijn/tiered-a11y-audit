@@ -41,9 +41,11 @@ For each key flow in the stack profile:
 Assistive tech and settings used in this simulation; runtime or static.
 
 ## Flow results
+(One row per flow. "Result" is one of the six scores of step 3, in English as written there. The last column holds
+finding IDs only, and only for a flow that failed or needed help; see step 5.)
+
 | Flow | Result | Time/effort feel | Main obstacle | Findings |
 |---|---|---|---|---|
-(the last column holds finding IDs only, and only for a flow that failed or needed help; see step 5)
 
 ## Walkthrough trace
 | Flow | Step | What I did | What I perceived | Evidence |

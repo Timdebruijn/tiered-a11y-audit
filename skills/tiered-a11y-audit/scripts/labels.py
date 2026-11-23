@@ -63,3 +63,20 @@ def load_labels(lang: str, ws: Path) -> dict:
         print(f"{path}: {len(problems)} problem(s), fix them and run again:\n  " + "\n  ".join(problems[:20]), file=sys.stderr)
         sys.exit(2)
     return labels
+
+
+def flow_result(text):
+    """Which of the persona protocol's scores a cell of the flow table holds: 'na', 'failed', 'help', 'difficulty',
+    'completed', or None when it is none of them. English as the protocol asks, and the Dutch a persona may write.
+
+    A result that starts with "completed" is never a failure, whatever it goes on to mention."""
+    s = str(text).strip(" *_`").lower()
+    if "n/a" in s or "not applicable" in s or "niet van toepassing" in s:
+        return "na"
+    if not s.startswith(("complet", "voltooid")) and ("fail" in s or "mislukt" in s):
+        return "failed"
+    if "help" in s or "workaround" in s or "hulp" in s:
+        return "help"
+    if "difficult" in s or "moeite" in s:
+        return "difficulty"
+    return "completed" if "complet" in s or "voltooid" in s else None
