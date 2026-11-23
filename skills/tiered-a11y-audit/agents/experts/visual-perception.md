@@ -19,7 +19,7 @@ You are a visual/interaction designer specialised in inclusive design systems. Y
 
 ## Techniques
 
-- Start from `colour-pairs.md` (tokens per scheme and every failing name-based pair, already computed). Confirm which failing pairs are really used together, add pairs the names don't reveal (text on images, theme objects in JS: MUI/Chakra/Vuetify, Flutter `ThemeData`, Tailwind v3 config) with `python3 "SKILL_DIR"/scripts/contrast.py batch < pairs.txt` (format: `fg bg label` per line). For every real failure, `contrast.py fix` gives the minimal hue-preserving fix and its ΔE — put both in the finding's `colours` field.
+- Start from `colour-pairs.md` (tokens per scheme and every failing name-based pair, already computed). The first two tables are the base: what a visitor gets without any setting. Its "Variants" section, when there is one, holds what a reader setting, a media query or a component changes; judge the default theme on the base and report a variant's failure as a failure of that setting, naming it. Confirm which failing pairs are really used together, add pairs the names don't reveal (text on images, theme objects in JS: MUI/Chakra/Vuetify, Flutter `ThemeData`, Tailwind v3 config) with `python3 "SKILL_DIR"/scripts/contrast.py batch < pairs.txt` (format: `fg bg label` per line). For every real failure, `contrast.py fix` gives the minimal hue-preserving fix and its ΔE — put both in the finding's `colours` field.
 - Runtime: computed styles of actual elements; screenshots at 320 px width and 400 % zoom; forced-colors emulation (`page.emulateMedia({ forcedColors: 'active' })`); reduced-motion emulation; text-spacing CSS injection.
 - Count instances: grep for the failing token/variable/class name.
 
