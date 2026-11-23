@@ -33,7 +33,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from detect_stack import analyse, finalise, print_human  # noqa: E402
+from detect_stack import analyse, finalise, made_up_of, print_human  # noqa: E402
 
 WS = ".a11y-audit"
 IGNORE = {"all": [f"{WS}/"], "report": [f"{WS}/*", f"!{WS}/REPORT.md", f"!{WS}/coverage.md"]}
@@ -136,9 +136,11 @@ def report(root: Path, r: dict) -> str:
         f"- Git repository: {in_git}",
         f"- {WS}/ ignored by git: {ignored}",
         f"- Earlier audit: {EARLIER[workspace_state(root / WS)]}",
-        f"- Project-owned UI files: {r['project_ui_files']}",
+        f"- Project-owned UI files: {r['project_ui_files']}{made_up_of(r)}",
         f"- Audit size they suggest: {mode_for(r['project_ui_files'])}",
         f"- Run scripts in package.json: {', '.join(scripts) or 'none found'}",
+        *([f"- Backend beside the frontend: {', '.join(r['backend'][:3])}. A dev server from package.json may show the interface without its data: "
+           "ask how the whole application is started, and do not offer to start the dev server"] if r["backend"] and scripts else []),
         f"- node: {shutil.which('node') or 'not found'}",
         f"- Installed browser for the scan: {browser or 'not found (Playwright would download one, about 150 MB)'}",
         f"- Scratch directory to offer, outside the repository: {Path(tempfile.gettempdir()) / 'a11y-scan'}",

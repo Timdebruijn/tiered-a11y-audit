@@ -114,6 +114,64 @@ def test_generic_link_text_is_found_in_every_listed_language_and_the_row_says_wh
         assert "phrases in en, nl, de, fr, es, pt, it; other languages not searched" in row, "a zero must not read as none for a language that was never searched"
 
 
+def test_a_mention_of_a_page_is_no_page_and_test_code_is_no_interface():
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        (root / "web/src").mkdir(parents=True)
+        (root / "internal/api").mkdir(parents=True)
+        (root / "firmware").mkdir()
+        (root / "web/index.html").write_text('<!doctype html>\n<html lang="en"><head><title>x</title></head><body><div id="root"></div></body></html>')
+        # a comment that names the element, in a component file
+        (root / "web/src/A11y.tsx").write_text("/** Reader settings live as attributes on <html>, which is where the stylesheet reads them. */\n"
+                                               "export function A11y() { return <button aria-label=\"Options\">Aa</button> }\n")
+        # a whole page in a string, but in a test: a fixture, not the product
+        (root / "internal/api/hardening_test.go").write_text('package api\nfunc TestCSP(t *testing.T) { body := "<html><body>hello</body></html>"; _ = body }\n')
+        (root / "internal/api/doc.go").write_text("package api\n// Handler writes the <body> of the status page.\n")
+        # a real page in source code, one tag per call as firmware writes it, without lang
+        (root / "firmware/web.cpp").write_text('void page() {\n  client.println("<html>");\n  client.println("<head><title>Relay</title></head>");\n'
+                                               '  client.println("<body><h1>Relay</h1></body></html>");\n}\n')
+        # and the top of a page only: the rest is written by another function
+        (root / "firmware/header.cpp").write_text('void head() {\n  client.println("<html lang=\\"en\\">");\n  client.println("<head><title>Relay</title></head>");\n}\n')
+        detect, patterns = run("detect_stack.py", root), run("scan_patterns.py", root)
+        embedded = detect.split("## Embedded HTML")[1].split("##")[0]
+        assert "firmware/web.cpp" in embedded and "firmware/header.cpp" in embedded, embedded
+        assert "hardening_test.go" not in embedded and "doc.go" not in embedded, embedded
+        assert "1 test files with HTML in them" in detect, detect
+        assert "| <html> without lang | 1 |" in patterns, [l for l in patterns.splitlines() if "without lang" in l]
+        lang_rows = patterns.split("## Per-file: headings, titles, lang")[1]
+        assert "| firmware/web.cpp |" in lang_rows and "MISSING" in lang_rows and "| web/index.html |" in lang_rows, lang_rows
+        assert "A11y.tsx" not in lang_rows and "hardening_test.go" not in patterns and "doc.go" not in lang_rows, lang_rows
+
+
+def test_the_count_that_picks_the_audit_size_says_what_it_is_made_of():
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        (root / "web/src").mkdir(parents=True)
+        (root / "docs").mkdir()
+        (root / "web/index.html").write_text('<!doctype html><html lang="en"><head><title>x</title></head><body></body></html>')
+        (root / "web/src/App.tsx").write_text("export const App = () => <main>hi</main>\n")
+        (root / "web/src/styles.css").write_text(":root { --fg: #111 }\n")
+        (root / "web/src/format.ts").write_text("export const ms = (n: number): string => `${n} ms`\nexport const ok = (a: number, b: number) => a < b\n")
+        (root / "web/src/api.ts").write_text("export async function load(): Promise<Array<number>> { return (await fetch('/api')).json() }\n")
+        (root / "web/src/render.worker.ts").write_text("const ctx = new OffscreenCanvas(1, 1).getContext('2d')\n")
+        (root / "web/src/menu.js").write_text("document.querySelector('nav').addEventListener('click', toggle)\n")
+        (root / "web/src/format.test.ts").write_text("import { ms } from './format'\n")
+        (root / "web/vite.config.ts").write_text("export default {}\n")
+        (root / "docs/guide.md").write_text("# Guide\n")
+        (root / "web/package.json").write_text('{"scripts": {"dev": "vite"}, "dependencies": {"react": "19.0.0"}}')
+        detect = run("detect_stack.py", root)
+        scope = next(l for l in detect.splitlines() if l.startswith("Project-owned UI files:"))
+        assert scope.startswith("Project-owned UI files: 5 ("), scope                    # html, tsx, css and the two scripts that touch the page
+        for part in ("scripts that touch the page 2", "TSX 1", "HTML 1", "CSS 1", "2 scripts without DOM or markup", "2 test and config scripts", "1 Markdown"):
+            assert part in scope, (part, scope)
+        assert "backend" not in detect.lower(), "no backend marker in this tree"
+        (root / "go.mod").write_text("module example.test/app\n")
+        detect = run("detect_stack.py", root)
+        assert "A backend sits beside the frontend (go.mod)" in detect and "ask how the whole application is started" in detect, detect[-900:]
+        (root / "web/package.json").unlink()                                              # a backend alone has no dev server to mistake for the app
+        assert "A backend sits beside" not in run("detect_stack.py", root)
+
+
 def test_forms_and_controls_are_counted_for_the_audit_size():
     with tempfile.TemporaryDirectory() as d:
         root = Path(d)
