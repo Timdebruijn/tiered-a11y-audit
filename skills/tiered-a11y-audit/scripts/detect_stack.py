@@ -213,15 +213,34 @@ TEXT_EXT = {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".vue", ".svelte", ".a
 # Source files that may EMBED a UI as a string literal (C++ raw strings, Go embed, Rust include_str!, Python templates…).
 EMBED_EXT = {".h", ".hpp", ".c", ".cc", ".cpp", ".ino", ".go", ".rs", ".py", ".rb", ".java", ".kt", ".swift", ".cs",
              ".ex", ".exs", ".lua", ".pl", ".sh", ".txt"}
-# A page, not a mention of one: a doctype, an <html> with the start of a document close behind it, or a <body> that is
-# closed again. A comment that says "set on <html>" is none of these.
-EMBED_RE = re.compile(r"<!DOCTYPE html|<html\b[^>]*>[\s\S]{0,200}?<(?:head|body|meta|title)\b|<body\b[^>]*>[\s\S]*?</body>", re.IGNORECASE)
+# The parts of a document that show a page is being written and not merely named.
+PAGE_PARTS = re.compile(r"<!doctype html|<(?:html|head|body)[\s>]|</(?:html|body)>", re.IGNORECASE)
+
+
+def is_page(text: str) -> bool:
+    """A page, not a mention of one: a doctype, or two different parts of a document somewhere in the file (an <html> and
+    a <head>, a <body> and its end). A comment that says "set on <html>" has one. One pass, whatever the size of the file."""
+    seen = set()
+    for m in PAGE_PARTS.finditer(text):
+        part = m.group(0).lower().rstrip(" \t\r\n>")
+        if part.startswith("<!doctype"):
+            return True
+        seen.add(part)
+        if len(seen) > 1:
+            return True
+    return False
+
+
 # Test code holds HTML as fixtures, not as the product's interface.
-TEST_FILE = re.compile(r"(^|/)(__tests__|tests?|testdata|spec)/|_test\.(go|py|rb|exs?)$|(^|/)test_[^/]+\.py$|\.(test|spec)\.[a-z]+$|_spec\.rb$", re.IGNORECASE)
-# A script counts as interface when it touches the page: the DOM, a canvas, or markup of its own. A module of pure logic
-# (formatting, an API client, a store) does not make the interface larger.
+TEST_FILE = re.compile(r"(^|/)(__tests__|tests?|testdata|spec)/|_test\.\w+$|(^|/)test_[^/]+$|\.(test|spec)\.\w+$|_spec\.rb$"
+                       r"|[a-z0-9]Tests?\.(java|kt|swift|cs)$|(^|/)(tests|conftest)\.py$")
+# A sign that a script touches the page: the DOM, a canvas, or markup of its own (a closing tag or an attribute, which a
+# type argument such as Array<number> has not). Only looked at where the interface lives in component files: there a
+# plain module is usually logic. In a project without components the scripts are the interface, and all of them count.
 DOM_RE = re.compile(r"\bdocument\.|\bwindow\.|querySelector|getElementById|addEventListener|innerHTML|insertAdjacent|createElement|customElements"
-                    r"|getContext\(|OffscreenCanvas|</[A-Za-z][\w-]*>|<[a-z][\w-]*\s+[\w:-]+=")     # a closing tag or an attribute: not a type argument like Array<number>
+                    r"|getContext\(|OffscreenCanvas|</[A-Za-z][\w-]*>|<[a-z][\w-]*\s+[\w:-]+=")
+COMPONENT_TYPES = {"JSX", "TSX", "Vue SFC", "Svelte", "Astro"}
+RUN_SCRIPTS = ("dev", "start", "serve", "preview", "storybook")     # package.json scripts that start something to look at
 # A backend that may serve the pages or their data: with one of these beside a package.json, its dev server alone shows less.
 BACKEND_MARKERS = {"go.mod", "Cargo.toml", "manage.py", "Gemfile", "composer.json", "mix.exs", "pom.xml", "build.gradle", "build.gradle.kts"}
 
@@ -297,7 +316,7 @@ def analyse(root: Path, max_files: int) -> dict:
     vendor = submodule_paths(root) | {d for d in VENDOR_DIRS if (root / d).is_dir()}
     result: dict = {
         "root": str(root), "packages": [], "detected": defaultdict(dict), "vendored": defaultdict(dict),
-        "build_dirs": sorted(build), "vendor_dirs": sorted(vendor), "project_ui_files": 0, "counted": Counter(), "not_counted": Counter(),
+        "build_dirs": sorted(build), "vendor_dirs": sorted(vendor), "project_ui_files": 0, "counted": Counter(), "not_counted": Counter(), "scripts": Counter(),
         "backend": [], "markers": [], "configs": [],
         "file_types": Counter(), "suppressions": Counter(), "suppression_examples": [],
         "signals": {k: 0 for k in A11Y_SIGNALS}, "signal_examples": defaultdict(list),
@@ -383,17 +402,16 @@ def analyse(root: Path, max_files: int) -> dict:
             result["file_types"][TEMPLATE_EXT[ext]] += 1
             if ext in {".md", ".mdx"}:
                 result["not_counted"]["Markdown"] += 1
+            elif TEST_FILE.search(rel):
+                result["not_counted"]["test files"] += 1
             else:
                 result["project_ui_files"] += 1
                 result["counted"][TEMPLATE_EXT[ext]] += 1
         elif ext in {".js", ".ts", ".mjs", ".cjs"}:
-            if re.search(r"\.(test|spec|config)\.", name):
+            if TEST_FILE.search(rel) or re.search(r"\.config\.", name):
                 result["not_counted"]["test and config scripts"] += 1
-            elif size < 2_000_000 and DOM_RE.search(read_text(p)):
-                result["project_ui_files"] += 1
-                result["counted"]["scripts that touch the page"] += 1
-            else:
-                result["not_counted"]["scripts without DOM or markup"] += 1
+            else:       # which of the two it is, is decided in finalise(), once it is known where the interface lives
+                result["scripts"]["page" if size >= 2_000_000 or DOM_RE.search(read_text(p)) else "other"] += 1
         if re.search(r"\.stories\.(jsx?|tsx?|mdx|svelte|vue)$", name):
             result["file_types"]["Storybook stories"] += 1
         scan_for_signals = ext in TEXT_EXT
@@ -401,9 +419,9 @@ def analyse(root: Path, max_files: int) -> dict:
             txt = read_text(p)
             if CSP_RE.search(txt):
                 result["csp"].append(rel)
-            if EMBED_RE.search(txt) and TEST_FILE.search(rel):
-                result["not_counted"]["test files with HTML in them"] += 1
-            elif EMBED_RE.search(txt):
+            if is_page(txt) and TEST_FILE.search(rel):
+                result["not_counted"]["test files with a page in a string"] += 1
+            elif is_page(txt):
                 lines = txt.count("\n") + 1
                 result["embedded_html"].append(f"{rel} ({lines} lines)")
                 result["file_types"]["Embedded HTML (string literal)"] += 1
@@ -446,13 +464,27 @@ def finalise(r: dict) -> dict:
     d = r["detected"]
     if r["vendor_dirs"]:
         hints.append(f"Vendored/submodule code in {r['vendor_dirs']}: usually off-limits for edits — fixes go in project overrides; its packages are listed separately and are NOT the project's stack.")
+    # Plain scripts: in a project with component files only those that touch the page are interface; elsewhere all are.
+    page, other = r["scripts"]["page"], r["scripts"]["other"]
+    if COMPONENT_TYPES & set(r["counted"]):
+        r["counted"]["scripts that touch the page"] += page
+        r["not_counted"]["scripts of logic beside the components"] += other
+    else:
+        r["counted"]["scripts"] += page + other
+    r["counted"], r["not_counted"] = (Counter({k: v for k, v in c.items() if v}) for c in (r["counted"], r["not_counted"]))
+    r["project_ui_files"] = sum(r["counted"].values())
+    # A backend at the root of the repository, or in the folder of a package.json that has something to start. A Gemfile
+    # beside a Jekyll config and a go.mod beside a Hugo config belong to the site generator, not to a backend.
+    ssg = {"Gemfile"} if any(m.startswith("Jekyll") for m in r["markers"]) else set()
+    ssg |= {"go.mod"} if any(m.startswith("Hugo") for m in r["markers"]) else set()
+    startable = {str(Path(p["path"]).parent.as_posix()) for p in r["packages"] if set(p["scripts"]) & set(RUN_SCRIPTS)}
+    r["backend"] = sorted(b for b in r["backend"] if startable and Path(b).name not in ssg and (str(Path(b).parent.as_posix()) in startable | {"."}))
     n = r["project_ui_files"]
-    hints.append(f"Project-owned UI files: {n} (templates, styles and scripts that touch the page; vendored code, build output, tests and Markdown excluded) → {'mini' if n <= 10 else 'lean' if n <= 25 else 'full'} audit by file count; check the interactive-widget count in pattern-inventory.md before settling on mini.")
+    hints.append(f"Project-owned UI files: {n} (templates, styles and scripts; vendored code, build output, tests and Markdown excluded; the Scope line says what the number is made of) → {'mini' if n <= 10 else 'lean' if n <= 25 else 'full'} audit by file count; check the interactive-widget count in pattern-inventory.md before settling on mini.")
     if r["embedded_html"]:
         hints.append(f"UI embedded in {len(r['embedded_html'])} source file(s) as string literals: there is no framework to lean on; audit the literals directly and cite their line numbers.")
-    if r["backend"] and any(p["scripts"] for p in r["packages"]):
-        hints.append(f"A backend sits beside the frontend ({', '.join(r['backend'][:3])}). If it serves the pages or their data, a dev server started from "
-                     "package.json shows the interface without it: ask how the whole application is started before offering to run one.")
+    if r["backend"]:
+        hints.append(backend_note(r))
     labels = {lab for cat in d.values() for lab in cat}
     if "React" in labels and not {"Next.js", "Remix", "React Router (framework mode)", "TanStack Start"} & labels:
         if "React Router" in labels or "TanStack Router" in labels:
@@ -493,6 +525,11 @@ def finalise(r: dict) -> dict:
         hints.append(f"{sum(r['suppressions'].values())} suppressed a11y lint warnings found.")
     r["hints"] = hints
     return r
+
+
+def backend_note(r: dict) -> str:
+    return (f"A backend may sit beside the frontend ({', '.join(r['backend'][:3])}). If it serves the pages or their data, a dev server started from "
+            "package.json shows the interface without it: ask how the whole application is started before offering to run one.")
 
 
 def made_up_of(r: dict) -> str:

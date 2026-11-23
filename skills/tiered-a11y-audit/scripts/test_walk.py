@@ -131,15 +131,22 @@ def test_a_mention_of_a_page_is_no_page_and_test_code_is_no_interface():
         (root / "firmware/web.cpp").write_text('void page() {\n  client.println("<html>");\n  client.println("<head><title>Relay</title></head>");\n'
                                                '  client.println("<body><h1>Relay</h1></body></html>");\n}\n')
         # and the top of a page only: the rest is written by another function
-        (root / "firmware/header.cpp").write_text('void head() {\n  client.println("<html lang=\\"en\\">");\n  client.println("<head><title>Relay</title></head>");\n}\n')
+        (root / "firmware/header.cpp").write_text('void head() {\n  client.println("<html lang=\\"en\\">");\n' + "  // " + "a long comment " * 40 + "\n"
+                                                  '  client.println("<head><title>Relay</title></head>");\n}\n')
+        # a layout whose <html> has no lang, with more between it and the body than any fixed window would allow
+        (root / "web/src/layout.tsx").write_text("export default function Layout({ children }) {\n  return (\n    <html>\n" + "      <Provider>\n" * 30
+                                                 + "      <body>{children}</body>\n    </html>\n  )\n}\n")
+        # and a doctype is a page by itself, whatever follows it
+        (root / "firmware/status.cpp").write_text('const char page[] = "<!DOCTYPE html><title>Status</title><p>ok";\n')
         detect, patterns = run("detect_stack.py", root), run("scan_patterns.py", root)
         embedded = detect.split("## Embedded HTML")[1].split("##")[0]
-        assert "firmware/web.cpp" in embedded and "firmware/header.cpp" in embedded, embedded
+        assert "firmware/web.cpp" in embedded and "firmware/header.cpp" in embedded and "firmware/status.cpp" in embedded, embedded
         assert "hardening_test.go" not in embedded and "doc.go" not in embedded, embedded
-        assert "1 test files with HTML in them" in detect, detect
-        assert "| <html> without lang | 1 |" in patterns, [l for l in patterns.splitlines() if "without lang" in l]
+        assert "1 test files with a page in a string" in detect, detect
+        assert "| <html> without lang | 2 |" in patterns, [l for l in patterns.splitlines() if "without lang" in l]      # the firmware page and the layout
         lang_rows = patterns.split("## Per-file: headings, titles, lang")[1]
         assert "| firmware/web.cpp |" in lang_rows and "MISSING" in lang_rows and "| web/index.html |" in lang_rows, lang_rows
+        assert "| web/src/layout.tsx |" in lang_rows, lang_rows
         assert "A11y.tsx" not in lang_rows and "hardening_test.go" not in patterns and "doc.go" not in lang_rows, lang_rows
 
 
@@ -162,14 +169,62 @@ def test_the_count_that_picks_the_audit_size_says_what_it_is_made_of():
         detect = run("detect_stack.py", root)
         scope = next(l for l in detect.splitlines() if l.startswith("Project-owned UI files:"))
         assert scope.startswith("Project-owned UI files: 5 ("), scope                    # html, tsx, css and the two scripts that touch the page
-        for part in ("scripts that touch the page 2", "TSX 1", "HTML 1", "CSS 1", "2 scripts without DOM or markup", "2 test and config scripts", "1 Markdown"):
+        for part in ("scripts that touch the page 2", "TSX 1", "HTML 1", "CSS 1", "2 scripts of logic beside the components", "2 test and config scripts", "1 Markdown"):
             assert part in scope, (part, scope)
+        (root / "web/src/App.test.tsx").write_text("test('renders', () => render(<App />))\n")
+        (root / "web/src/__tests__").mkdir()
+        (root / "web/src/__tests__/page.html").write_text("<p>fixture</p>")
+        scope = next(l for l in run("detect_stack.py", root).splitlines() if l.startswith("Project-owned UI files:"))
+        assert scope.startswith("Project-owned UI files: 5 (") and "2 test files" in scope, scope   # a test of a component is no component
         assert "backend" not in detect.lower(), "no backend marker in this tree"
         (root / "go.mod").write_text("module example.test/app\n")
         detect = run("detect_stack.py", root)
-        assert "A backend sits beside the frontend (go.mod)" in detect and "ask how the whole application is started" in detect, detect[-900:]
-        (root / "web/package.json").unlink()                                              # a backend alone has no dev server to mistake for the app
-        assert "A backend sits beside" not in run("detect_stack.py", root)
+        assert "A backend may sit beside the frontend (go.mod)" in detect and "ask how the whole application is started" in detect, detect[-900:]
+        (root / "web/package.json").write_text('{"scripts": {"test": "vitest", "lint": "eslint ."}}')      # nothing to start, so nothing to mistake for the app
+        assert "A backend may sit beside" not in run("detect_stack.py", root)
+        (root / "web/package.json").unlink()
+        assert "A backend may sit beside" not in run("detect_stack.py", root)
+
+
+def test_without_component_files_the_scripts_are_the_interface():
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        (root / "js").mkdir()
+        (root / "index.html").write_text('<!doctype html><html lang="en"><head><title>x</title></head><body></body></html>')
+        for i in range(12):                                                               # jQuery plugins: no document., no markup, all interface
+            (root / f"js/plugin{i}.js").write_text("$('#menu').on('click', function () { $(this).toggleClass('open') })\n")
+        scope = next(l for l in run("detect_stack.py", root).splitlines() if l.startswith("Project-owned UI files:"))
+        assert scope.startswith("Project-owned UI files: 13 (scripts 12, HTML 1)"), scope
+        assert "logic" not in scope, scope
+
+
+def test_a_site_generator_or_a_tool_in_a_corner_is_no_backend():
+    for files, named in (({"Gemfile": "gem 'jekyll'", "_config.yml": "title: x", "package.json": '{"scripts": {"dev": "x"}}'}, False),        # Jekyll
+                         ({"go.mod": "module x", "hugo.toml": "baseURL = 'x'", "package.json": '{"scripts": {"dev": "x"}}'}, False),         # Hugo modules
+                         ({"src-tauri/Cargo.toml": "[package]", "package.json": '{"scripts": {"dev": "vite"}}'}, False),                     # a desktop shell
+                         ({"tools/cleanup/go.mod": "module x", "package.json": '{"scripts": {"dev": "vite"}}'}, False),                      # an unrelated tool
+                         ({"Gemfile": "gem 'rails'", "package.json": '{"scripts": {"dev": "vite"}}'}, True),                                 # Rails beside Vite
+                         ({"go.mod": "module x", "web/package.json": '{"scripts": {"dev": "vite"}}'}, True)):                                # the reported case
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            for rel, text in files.items():
+                (root / rel).parent.mkdir(parents=True, exist_ok=True)
+                (root / rel).write_text(text)
+            (root / "index.html").write_text('<!doctype html><html lang="en"><head><title>x</title></head><body></body></html>')
+            assert ("A backend may sit beside" in run("detect_stack.py", root)) is named, sorted(files)
+
+
+def test_a_large_file_full_of_half_tags_does_not_stall_the_detector():
+    import time
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        (root / "gen.py").write_text("<body> x " * 120000)                                # a megabyte of one tag, never closed: no page
+        (root / "index.html").write_text('<!doctype html><html><head><title>x</title></head><body></body></html>')
+        start = time.time()
+        detect = run("detect_stack.py", root)
+        assert time.time() - start < 15, "the test for a page walks to the end of the file from every tag again"    # a fraction of a second; it was minutes
+        assert "gen.py" not in detect, detect[-400:]
+        assert "gen.py" not in run("scan_patterns.py", root)
 
 
 def test_forms_and_controls_are_counted_for_the_audit_size():

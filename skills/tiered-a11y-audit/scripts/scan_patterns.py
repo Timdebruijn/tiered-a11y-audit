@@ -20,7 +20,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from detect_stack import EMBED_RE, TEST_FILE  # noqa: E402    what counts as a page inside source code, and what is test code
+from detect_stack import TEST_FILE, is_page  # noqa: E402    what counts as a page inside source code, and what is test code
 from generic_text import ALL as GENERIC_PHRASES, LANGUAGES as GENERIC_LANGUAGES  # noqa: E402
 
 SKIP_DIRS = {"node_modules", ".git", "dist", "build", ".next", ".nuxt", ".output", ".svelte-kit", ".astro", "out",
@@ -126,8 +126,8 @@ MARKUP_PATTERNS = [
     ("native_dialog", r"<dialog\b|\.showModal\(", re.I, "Native <dialog> usage (good; check name and focus restore)", "dynamic", ""),
     ("modal_like_class", r"class(Name)?\s*=\s*[\"'][^\"']*\b(modal|dialog|drawer|popover|overlay|sheet)\b", re.I,
      "Modal-like classes without native dialog (check role, focus trap, Esc, inert)", "dynamic", "4.1.2, 2.1.2, 2.4.3."),
-    # with the start of a document close behind it: a comment or a string that only mentions <html> is no page
-    ("html_without_lang", r"<html\b(?![^>]*\blang\s*=)[^>]*>(?=[\s\S]{0,200}?<(?:head|body|meta|title)\b)", re.I, "<html> without lang", "semantics", "3.1.1."),
+    # counted only in a file that is a page (see is_page): a comment or a string that only mentions <html> is none
+    ("html_without_lang", r"<html\b(?![^>]{0,500}\blang\s*=)[^>]{0,500}>", re.I, "<html> without lang", "semantics", "3.1.1."),
     ("viewport_zoom_lock", r"user-scalable\s*=\s*(no|0)|maximum-scale\s*=\s*1(\.0)?\b|userScalable:\s*false|maximumScale:\s*1\b", re.I,
      "Viewport blocks zoom", "visual", "1.4.4."),
     ("skip_link", r"(?i)skip[-_ ]?(to[-_ ]?)?(main|content|nav)|SkipNavLink|visually-hidden-focusable", 0,
@@ -237,7 +237,7 @@ def main():
             kind = "script"
         elif ext in EMBED_EXT and not TEST_FILE.search(p.relative_to(root).as_posix()):
             txt = read(p)
-            if EMBED_RE.search(txt):
+            if is_page(txt):
                 kind = "markup"
         size = file_size(p)
         if not kind or size is None or size > 3_000_000:
@@ -258,8 +258,11 @@ def main():
             pattern_sets.append(SCRIPT_PATTERNS)
             if ext in {".jsx", ".tsx"}:
                 pattern_sets.append(MARKUP_PATTERNS)
+        page = is_page(txt) if kind == "markup" or ext in {".jsx", ".tsx"} else False
         for pats in pattern_sets:
             for key, rx, flags, *_ in pats:
+                if key == "html_without_lang" and not page:
+                    continue
                 for m in re.finditer(rx, txt, flags):
                     line = txt.count("\n", 0, m.start()) + 1
                     snippet = txt[m.start():m.start() + 110].split("\n")[0].strip()
@@ -271,8 +274,8 @@ def main():
             heads = Counter(m.group(1) for m in re.finditer(r"<h([1-6])\b", txt, re.I))
             titles = [t.strip() for t in re.findall(r"<title>([^<]*)</title>", txt, re.I)]
             lang = None
-            if re.search(r"<html\b[^>]*>[\s\S]{0,200}?<(?:head|body|meta|title)\b", txt, re.I):
-                lang = bool(re.search(r"<html\b[^>]*\blang\s*=", txt, re.I))
+            if page and re.search(r"<html[\s>]", txt, re.I):
+                lang = bool(re.search(r"<html\b[^>]{0,500}\blang\s*=", txt, re.I))
             if heads or titles or lang is not None:
                 per_file[rel] = {"headings": {f"h{k}": v for k, v in sorted(heads.items())}, "titles": titles, "html_lang": lang}
 

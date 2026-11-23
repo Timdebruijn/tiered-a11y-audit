@@ -105,11 +105,14 @@ def test_a_backend_beside_the_frontend_is_named_and_the_count_is_explained():
         (root / "web/util.ts").write_text("export const add = (a: number, b: number) => a + b\n")
         (root / "web/package.json").write_text('{"scripts": {"dev": "vite", "preview": "vite preview"}}')
         out = run(root).stdout
-        assert line(out, "Project-owned UI files") == "- Project-owned UI files: 1 (HTML 1); not counted: 1 scripts without DOM or markup", line(out, "Project-owned UI files")
-        assert "- Backend beside the frontend" not in out
+        (root / "web/App.tsx").write_text("export const App = () => <main>hi</main>\n")
+        out = run(root).stdout
+        assert line(out, "Project-owned UI files") == "- Project-owned UI files: 2 (TSX 1, HTML 1); not counted: 1 scripts of logic beside the components", line(out, "Project-owned UI files")
+        assert "- Backend:" not in out
         (root / "go.mod").write_text("module example.test/app\n")
         out = run(root).stdout
-        assert "go.mod" in line(out, "Backend beside the frontend") and "do not offer to start the dev server" in line(out, "Backend beside the frontend")
+        assert "(go.mod)" in line(out, "Backend") and "ask how the whole application is started" in line(out, "Backend")
+        assert line(out, "Backend")[len("- Backend: "):] in out.split("\n# Stack detection")[1], "the preflight and the detector say the same thing"
 
 
 def test_audit_size_follows_the_thresholds_of_the_skill():
