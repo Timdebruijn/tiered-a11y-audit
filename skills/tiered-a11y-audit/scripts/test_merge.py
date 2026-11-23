@@ -325,6 +325,54 @@ def test_a_personas_criterion_is_settled_and_an_experts_is_asked_about():
         assert [p for p in merged["problems"] if p.startswith("NONE-001: no WCAG criterion")], merged["problems"]
 
 
+def flows(ws, *rows, header="| Flow | Result | Feel | Main obstacle | Findings |\n|---|---|---|---|---|\n"):
+    (ws / "personas").mkdir(exist_ok=True)
+    (ws / "personas" / "screen-reader-user.md").write_text("# Screen reader user\n\n## Flow results\n" + header + "\n".join(rows) + "\n\n## end\n", encoding="utf-8")
+    r = merge(ws)
+    assert r.returncode == 0, r.stderr
+    merged = json.loads((ws / "findings" / "_merged.json").read_text())
+    return {f["id"]: f for f in merged["findings"]}, [p for p in merged["problems"] if p.startswith("persona ")], merged
+
+
+def test_a_flow_that_failed_raises_the_findings_its_row_names_and_says_so_when_it_names_none():
+    with tempfile.TemporaryDirectory() as d:
+        ws = claims_workspace(d, [finding("KBD-001"), finding("KBD-002"), finding("KBD-003", severity="minor")])
+        by, said, merged = flows(ws, "| Read a chart | failed | long | the chart is empty for me | KBD-001 |",
+                                     "| Add a rule | completed only with help | long | focus is lost | KBD-003 |",
+                                     "| Search | completed with difficulty | fine | nothing | |")
+        assert by["KBD-001"]["severity"] == "blocker" and by["KBD-003"]["severity"] == "critical" and by["KBD-002"]["severity"] == "serious", by
+        assert by["KBD-003"]["severity_before_persona"] == "minor" and len(merged["severity_upgrades"]) == 2
+        assert not said, said                                   # a flow that went well needs no finding
+        # the row as it was written before the table had a column for the IDs
+        by, said, _ = flows(ws, "| Read a chart | failed | long | the chart is empty (KBD-001) |", header="| Flow | Result | Feel | Main obstacle |\n|---|---|---|---|\n")
+        assert by["KBD-001"]["severity"] == "blocker" and not said, said
+        # no ID: the flow failed and nothing was raised
+        by, said, merged = flows(ws, "| Read a chart | failed | long | the chart is empty for me | |")
+        assert by["KBD-001"]["severity"] == "serious" and not merged["severity_upgrades"]
+        assert len(said) == 1 and "flow 'Read a chart' is 'failed' but its row names no finding" in said[0], said
+        by, said, _ = flows(ws, "| Add a rule | completed only with help or a workaround | long | focus is lost | |")
+        assert len(said) == 1 and "names no finding" in said[0], said
+        # an ID that is no finding is the same silence, and is named
+        by, said, _ = flows(ws, "| Read a chart | failed | long | the chart | KBD-009 |")
+        assert any("names KBD-009, which is not a finding" in p for p in said) and any("names no finding" in p for p in said), said
+        by, said, _ = flows(ws, "| Read a chart | failed | long | the chart | KBD-001, KBD-009 |")
+        assert by["KBD-001"]["severity"] == "blocker" and len(said) == 1 and "KBD-009" in said[0], said
+
+
+def test_a_visible_fix_without_its_design_impact_is_asked_for():
+    with tempfile.TemporaryDirectory() as d:
+        subtle = dict(visual_impact="subtle", proposed_tier=2)
+        ws = claims_workspace(d, [finding("VIS-001", **subtle), finding("VIS-002", tier_rationale="A darker border.", **subtle),
+                                  finding("VIS-003", tier_rationale="  ", **subtle), finding("VIS-004", severity="minor", **subtle),
+                                  finding("VIS-005", severity="minor", **subtle), finding("VIS-006"),
+                                  finding("VIS-007", visual_impact="significant", proposed_tier=3)])
+        by, _, merged = flows(ws, "| Read a chart | failed | long | the chart | VIS-005 |")
+        asked = sorted(p.split(":")[0] for p in merged["problems"] if "without tier_rationale" in p)
+        # the minor one the report prints short; the one a failed flow raised is no longer minor
+        assert asked == ["VIS-001", "VIS-003", "VIS-005"], merged["problems"]     # not VIS-002 (has one), VIS-004 (minor), VIS-006 (tier 1), VIS-007 (tier 3)
+        assert by["VIS-005"]["severity"] == "blocker"
+
+
 def test_a_coverage_reason_is_kept_under_either_key():
     with tempfile.TemporaryDirectory() as d:
         ws = workspace(d, {"keyboard-focus.json": {"agent": "keyboard-focus", "lenses": ["keyboard-focus"], "findings": [], "sc_coverage": {

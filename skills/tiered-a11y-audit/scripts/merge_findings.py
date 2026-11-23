@@ -575,6 +575,15 @@ def main():
     severity_upgrades = []
     for ff in flow_failures:
         floor = "blocker" if re.search(r"\bfailed\b", ff["result"], re.I) else "critical"
+        # The floor reaches a finding only through the IDs in the flow's row. A row without one that exists used to
+        # pass in silence, and the finding that stopped the persona kept the severity its expert gave it.
+        for fid in ff["ids"]:
+            if fid not in id_index:
+                problems.append(f"persona {ff['persona']}: the row of flow '{ff['flow']}' names {fid}, which is not a finding")
+        if not any(fid in id_index for fid in ff["ids"]):
+            problems.append(f"persona {ff['persona']}: flow '{ff['flow']}' is '{ff['result']}' but its row names no finding, so no severity "
+                            f"floor is applied; put the ID of the finding that stopped the persona in the last column of that row "
+                            f"in personas/, taken from its trace, or file the finding if nobody did")
         for fid in ff["ids"]:
             f = id_index.get(fid)
             if not f:
@@ -584,6 +593,13 @@ def main():
                 severity_upgrades.append(f"{f['id']}: {f.get('severity')} → {floor} ({ff['persona']} {ff['result']} on '{ff['flow']}')")
                 f["severity_before_persona"] = f.get("severity")
                 f["severity"] = floor
+
+    # The report gives a tier-2 finding a line on what changes visibly, except in the short blocks of minor ones. Asked
+    # for here, after the floors have set the severity, and not found at the end as a gap in the rendered report.
+    for f in merged:
+        if f.get("tier") == 2 and f.get("severity") != "minor" and not str(f.get("tier_rationale") or "").strip():
+            problems.append(f"{f['id']}: tier 2 without tier_rationale, so the report has no design impact to show; "
+                            f"say in its findings file what a sighted user will see change")
 
     merged.sort(key=lambda x: (x.get("tier") or 9, SEVERITY_ORDER.get(x.get("severity"), 9), x["id"]))
 

@@ -201,7 +201,16 @@ def test_phase_5_wants_the_personas_of_the_mode_and_a_merge_after_them():
     assert "--repo" not in gaps(ws, "5")[0], "a persona's place is not a file that was not found"
     lv.write_text(lv.read_text(encoding="utf-8").replace('"severity"', '"tier": "T2", "severity"'), encoding="utf-8")
     merge(ws)
+    one(ws, "5", "PER-low-vision-001: tier 2 without tier_rationale")          # the report would have no design impact to show
+    lv.write_text(lv.read_text(encoding="utf-8").replace('"severity"', '"tier_rationale": "A darker grey.", "severity"'), encoding="utf-8")
+    merge(ws)
     assert gaps(ws, "5") == [], gaps(ws, "5")                                  # no criterion, no file: settled, the phase is open
+    lv.write_text(lv.read_text(encoding="utf-8").replace("## New findings", "## Flow results\n| Flow | Result | Feel | Main obstacle | Findings |\n|---|---|---|---|---|\n| Pricing | failed | long | the price | |\n\n## New findings"), encoding="utf-8")
+    merge(ws)
+    one(ws, "5", "flow 'Pricing' is 'failed' but its row names no finding")    # the floor has nothing to act on
+    lv.write_text(lv.read_text(encoding="utf-8").replace("| the price | |", "| the price | PER-low-vision-001 |"), encoding="utf-8")
+    merge(ws)
+    assert gaps(ws, "5") == [], gaps(ws, "5")
     m = ws / "briefs" / "_agents.json"
     m.write_text(m.read_text(encoding="utf-8").replace('"mini"', '"lean"'), encoding="utf-8")
     one(ws, "5", "no persona report from motor-voice-user, cognitive-user")

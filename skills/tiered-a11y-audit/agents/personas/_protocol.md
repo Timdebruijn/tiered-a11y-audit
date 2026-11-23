@@ -30,6 +30,7 @@ For each key flow in the stack profile:
    - **cites** — you did not observe it but it would plausibly affect you; list it under "Cited findings", never under "Confirmed";
    - **disputed** — it would not matter much for you in practice, with the reason.
    Add what the experts missed as new findings. Open `findings/_merged.json` only for the full detail of a specific ID.
+5. **Go back to your flow table.** For every flow you scored `failed` or `completed only with help or a workaround`, put in the last column the ID of each finding that caused it: an expert's, or one of your own new ones. A script raises the severity of exactly those findings, and it can only do that through the IDs in that row. If no finding explains the result, you have a new finding to write.
 
 ## Output — write to `.a11y-audit/personas/<persona>.md`
 
@@ -40,8 +41,9 @@ For each key flow in the stack profile:
 Assistive tech and settings used in this simulation; runtime or static.
 
 ## Flow results
-| Flow | Result | Time/effort feel | Main obstacle |
-|---|---|---|---|
+| Flow | Result | Time/effort feel | Main obstacle | Findings |
+|---|---|---|---|---|
+(the last column holds finding IDs only, and only for a flow that failed or needed help; see step 5)
 
 ## Walkthrough trace
 | Flow | Step | What I did | What I perceived | Evidence |
@@ -71,7 +73,8 @@ Mention the moments that worked well, too.
  status. Cite the criterion you think applies, with `"confidence": "medium"` unless you are sure.
  Fields:
  id "PER-<persona>-001", fingerprint, title, description, evidence [{file, lines, url, selector, snippet}],
- wcag [{sc, name, level}], severity, affected_users, visual_impact, proposed_tier, fix {summary, location},
+ wcag [{sc, name, level}], severity, affected_users, visual_impact, proposed_tier, tier_rationale (one sentence on
+ what a sighted user will see change; needed when the fix is visible), fix {summary, location},
  effort, confidence, verify. Not "tier": "T2", not a bare "location" string, not a "detail" field — the merge
  script converts these and lists each conversion for the orchestrator; a finding with neither a
  visual_impact nor a tier is a problem it has to resolve.)
