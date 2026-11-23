@@ -25,7 +25,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from merge_findings import parse_ownership  # noqa: E402
+from merge_findings import load_previous, parse_ownership  # noqa: E402
 
 EXPERTS = ["semantics-structure", "keyboard-focus", "visual-perception", "forms-input", "dynamic-content", "content-media"]
 LEAN = {"structure-content": ["semantics-structure", "content-media"], "keyboard-dynamic": ["keyboard-focus", "dynamic-content"],
@@ -106,6 +106,36 @@ def own_rows(text: str, lenses: list, owners: dict) -> str:
     return "\n".join(kept)
 
 
+PREFIX_LENS = {"SEM": "semantics-structure", "KBD": "keyboard-focus", "VIS": "visual-perception", "FRM": "forms-input",
+               "DYN": "dynamic-content", "CNT": "content-media", "FWK": "framework-maximizer"}
+
+
+def earlier_findings(prev, owners: dict) -> dict:
+    """reader -> the lines of the earlier audit's findings that are its own: a lens by ID prefix, or else by the owner of
+    the first criterion. A persona's finding goes to nobody: a persona walks the flows before it reads any finding, and its
+    brief is the first thing it reads. Neither does a finding without a lens prefix and without a criterion."""
+    out = {}
+    for f in (prev or {}).get("findings") or []:
+        fid, fp = str(f.get("id") or ""), str(f.get("fingerprint") or "").strip()
+        if not fp:
+            continue
+        scs = [w.get("sc") for w in (f.get("wcag") if isinstance(f.get("wcag"), list) else []) if isinstance(w, dict) and isinstance(w.get("sc"), str)]
+        reader = None if fid.startswith("PER-") else PREFIX_LENS.get(fid[:3]) or next((owners[sc]["owner"] for sc in scs if sc in owners), None)
+        if reader:
+            out.setdefault(reader, []).append(f"- `{fp}`: {' '.join(str(f.get('title') or '').split())}")
+    return out
+
+
+def earlier_section(lines: list) -> str:
+    if not lines:
+        return ""
+    return ("# Findings of the earlier audit\n\nThis is a re-audit. The earlier audit filed the findings below in your area, one line each: its "
+            "fingerprint, then its title. They are not findings of this run: judge the product as it is now, and file nothing you did not see "
+            "yourself. When you do find one of these problems again, give your finding the same `fingerprint`, character for character, whatever "
+            "slug you would have chosen yourself. That is how the two audits are compared, and a problem filed under a new slug counts as "
+            "a new one beside an old one that nobody reported again.\n\n" + "\n".join(sorted(lines)))
+
+
 def skeleton(brief: str, lenses: list, owners: dict) -> str:
     """The start of the agent's findings file, so it fills in statuses instead of recalling which criteria are its own."""
     own = [sc for sc, meta in owners.items() if meta["owner"] in lenses]
@@ -151,18 +181,26 @@ def main():
     if not owners or homeless:
         sys.exit(f"build_briefs: wcag-ownership.md gives {len(owners)} criteria, of which {', '.join(homeless) or 'none'} have an owner "
                  "that is no lens of this run; no brief would carry them")
+    prev = load_previous(ws / "previous")[0] if (ws / "previous").is_dir() else None       # a re-audit: preflight.py --start put it there
+    known = earlier_findings(prev, owners)
+
+    def with_earlier(parts, readers):
+        section = earlier_section([line for r in readers for line in known.get(r, [])])
+        return "\n\n---\n\n".join(parts + [section] if section else parts)
     for brief, lenses in agents.items():
         body = "\n\n".join(rd(sd / "agents" / "experts" / f"{l}.md") for l in lenses)
         if len(lenses) > 1:
             body = (f"You cover {len(lenses)} lenses in this run and own the WCAG criteria and patterns of all of them: {', '.join(lenses)}. "
                     f"Write ONE findings file, named {brief}.json, with \"lenses\": {json.dumps(lenses)} at the top level and sc_coverage for both lenses; "
                     f"use the ID prefixes of whichever lens a finding belongs to.\n\n") + body
-        (out / f"{brief}.md").write_text("\n\n---\n\n".join([
+        # the earlier findings go before the skeleton, which stays the last thing an expert reads
+        (out / f"{brief}.md").write_text(with_earlier([
             f"# Briefing: {brief}", expert_proto, body, lens_schema, tiering, own_rows(ownership, lenses, owners), "# Stack profile\n\n" + profile + extras,
-            "# Framework playbook (relevant sections)\n\n" + pb, skeleton(brief, lenses, owners)]), encoding="utf-8")
-    (out / "framework-maximizer.md").write_text("\n\n---\n\n".join([
+            "# Framework playbook (relevant sections)\n\n" + pb], lenses) + "\n\n---\n\n" + skeleton(brief, lenses, owners), encoding="utf-8")
+    (out / "framework-maximizer.md").write_text(with_earlier([
         "# Briefing: framework-maximizer", expert_proto, rd(sd / "agents" / "experts" / "framework-maximizer.md"),
-        schema, tiering, own_rows(ownership, [], owners), "# Stack profile\n\n" + profile + extras, "# Framework playbook (relevant sections)\n\n" + pb]), encoding="utf-8")
+        schema, tiering, own_rows(ownership, [], owners), "# Stack profile\n\n" + profile + extras, "# Framework playbook (relevant sections)\n\n" + pb],
+        ["framework-maximizer"]), encoding="utf-8")
     for p in PERSONAS:
         (out / f"{p}.md").write_text("\n\n---\n\n".join([
             f"# Briefing: {p}", persona_proto, rd(sd / "agents" / "personas" / f"{p}.md"), persona_schema,

@@ -257,6 +257,11 @@ def test_phase_6_wants_a_current_draft_and_a_report_that_passes_the_linter():
     one(ws, "6", "the last merge ran without --previous")
     script("merge_findings.py", ws, "--ownership", HERE.parent / "references" / "wcag-ownership.md", "--previous", ws / "previous")
     assert (ws / "delta.md").is_file()
+    dm = ws / "findings" / "_delta-map.json"                                   # an answer on the delta that the merge has not read yet
+    dm.write_text("{}", encoding="utf-8")
+    touch_after(dm, ws / "findings" / "_merged.json")
+    assert any("older than _delta-map.json" in g for g in gaps(ws, "6")), gaps(ws, "6")
+    dm.unlink()
     one(ws, "6", "REPORT.draft.md is older")                                   # the delta is there; the draft predates that merge
 
 

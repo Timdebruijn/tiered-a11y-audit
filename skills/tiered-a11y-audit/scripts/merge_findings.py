@@ -9,7 +9,8 @@ Writes findings/_merged.json   all findings, duplicates merged (exact fingerprin
                                persona links and key-flow failures attached, leverage points attached, clusters listed
        findings/_merged.md     one line per finding (ID · tier · severity · title · location) + candidate-duplicate groups
        coverage.md             WCAG 2.2 A/AA matrix (55 criteria) from owners' sc_coverage, with counts and conflicts
-       delta.md                with --previous: resolved / still open / regressed / new, matched on fingerprint
+       delta.md                with --previous: resolved / not reported again / still open / regressed / new, matched on
+                               fingerprint and on findings/_delta-map.json
 Checks what a finding claims against what a script can look up: the cited file, lines and snippet
 exist in the repository; the criterion is a WCAG 2.2 A or AA one, with its name and level taken from the
 ownership table; stated contrast ratios are recomputed. What does not hold and needs a decision goes into
@@ -43,6 +44,23 @@ def read_json(p: Path):
     except (json.JSONDecodeError, UnicodeDecodeError, OSError) as e:
         print(f"!! {p.name}: unreadable ({type(e).__name__}: {e}); skipped", file=sys.stderr)
         return None
+
+
+def load_previous(prev_dir: Path):
+    """(the merge of the earlier audit as an object, why not) for a re-audit; the object is None when it cannot be used.
+    A bare list of findings, which is what an early version of this skill wrote, is that audit's findings without a delta."""
+    path = prev_dir / "findings" / "_merged.json"
+    if not path.exists():
+        path = prev_dir / "_merged.json"
+    if not path.exists():
+        return None, f"--previous given but {path} not found; no delta written"
+    data = read_json(path)
+    if isinstance(data, list):
+        data = {"findings": data}
+    if not isinstance(data, dict):
+        return None, f"previous {path.name} unreadable or not an object; no delta written"
+    data["findings"] = [f for f in data.get("findings") or [] if isinstance(f, dict)] if isinstance(data.get("findings"), list) else []
+    return data, ""
 
 
 def load_findings(fdir: Path):
@@ -418,18 +436,10 @@ def main():
     problems = Log()
     prev = None
     if a.previous:      # looked at before anything is written, so that a problem with it is in the files and not only on stderr
-        prev_path = Path(a.previous) / "findings" / "_merged.json"
-        if not prev_path.exists():
-            prev_path = Path(a.previous) / "_merged.json"
-        if not prev_path.exists():
-            problems.append(f"--previous given but {prev_path} not found; no delta written")
-        else:
-            prev = read_json(prev_path)
-            if not isinstance(prev, dict):
-                problems.append(f"previous {prev_path.name} unreadable or not an object; no delta written")
-                prev = None
+        prev, why_not = load_previous(Path(a.previous))
         if prev is None:
-            print(f"!! {problems[-1]}", file=sys.stderr)
+            problems.append(why_not)
+            print(f"!! {why_not}", file=sys.stderr)
     persona_links, persona_findings, flow_failures = parse_personas(ws / "personas", problems)
     dedupe = {}
     if (fdir / "_dedupe.json").exists():
@@ -665,6 +675,111 @@ def main():
         counts[status] += 1
         cov_rows.append((sc, meta["name"], meta["level"], meta["owner"], status, ", ".join(ids), note))
 
+    # --- re-audit delta -------------------------------------------------------------------
+    # A fingerprint is a slug an agent chose, so the same problem can come back under another one. Only an exact
+    # match is settled here. The rest is put to the orchestrator: an earlier finding that nobody filed again is "not
+    # reported again" until findings/_delta-map.json says which finding of this run it is, or that it is fixed.
+    delta = None        # worked out before anything is written, so that what is wrong with the map is in the files
+    if a.previous:
+        if prev is not None:
+            def key(fp):
+                return str(fp).strip().lower()
+            earlier = {key(f["fingerprint"]): f for f in prev["findings"] if f.get("fingerprint")}
+            was = prev.get("delta") if isinstance(prev.get("delta"), dict) else {}
+            was_resolved, was_unreported = ({key(fp) for fp in (was.get(k) if isinstance(was.get(k), list) else [])} for k in ("resolved", "not_reported"))
+            if "not_reported" not in was:       # a delta from before that list existed: its "resolved" only meant "not filed again"
+                was_resolved, was_unchecked = set(), was_resolved
+            else:
+                was_unchecked = set()
+            # What the earlier audit already did not see again is still not seen until it is matched, found or checked:
+            # it stays on the list, with the title that audit kept for it.
+            titles = was.get("earlier") if isinstance(was.get("earlier"), dict) else {}
+            for fp in sorted(was_unreported - set(earlier)):
+                kept = titles.get(fp) if isinstance(titles.get(fp), dict) else {}
+                earlier[fp] = {"fingerprint": fp, "id": kept.get("id"), "title": kept.get("title")}
+            cur = {key(f["fingerprint"]): f for f in merged}
+            same, fixed = {}, set()         # earlier fingerprint -> the finding of this run it is; the ones checked to be fixed
+            raw_map = read_json(fdir / "_delta-map.json") if (fdir / "_delta-map.json").exists() else {}
+            if not isinstance(raw_map, dict):
+                problems.append("_delta-map.json unreadable or not an object; no match from it applied")
+                raw_map = {}
+            for old, target in raw_map.items():
+                hit = cur.get(key(target)) or id_index.get(str(target).strip())
+                if key(old) not in earlier:
+                    problems.append(f"_delta-map.json: {old!r} is no fingerprint of the earlier audit")
+                elif key(target) == "resolved" and key(old) in cur:
+                    problems.append(f"_delta-map.json: {old!r} is called resolved, but {cur[key(old)]['id']} of this run has that fingerprint")
+                elif key(target) == "resolved":
+                    fixed.add(key(old))
+                elif key(old) in cur:
+                    problems.append(f"_delta-map.json: {old!r} needs no entry, {cur[key(old)]['id']} of this run has that fingerprint; take it out")
+                elif hit is None:
+                    problems.append(f"_delta-map.json: {old!r} points at {target!r}, which is neither a finding of this run nor \"resolved\"")
+                else:
+                    same[key(old)] = hit
+            open_now = {fp for fp in cur if fp in earlier or fp in was_unchecked} | {key(f["fingerprint"]) for f in same.values()}
+            regressed = sorted(fp for fp in cur if fp in was_resolved and fp not in open_now)
+            still_open = sorted(open_now)
+            new = sorted(fp for fp in cur if fp not in open_now and fp not in regressed)
+            gone = [fp for fp in earlier if fp not in cur and fp not in same]
+            resolved, not_reported = sorted(fp for fp in gone if fp in fixed), sorted(fp for fp in gone if fp not in fixed)
+            for f in merged:
+                fp = key(f["fingerprint"])
+                f["delta"] = "regressed" if fp in regressed else "still open" if fp in open_now else "new"
+            delta = {"resolved": resolved, "not_reported": not_reported, "still_open": still_open, "regressed": regressed, "new": new,
+                            "earlier": {fp: {"id": earlier[fp].get("id"), "title": earlier[fp].get("title")} for fp in resolved + not_reported},
+                            "matched": {old: key(f["fingerprint"]) for old, f in sorted(same.items())}}
+
+            def place(f, fp):
+                try:
+                    return norm_file(f) or fp.split("@", 1)[-1].split(":")[0]
+                except (AttributeError, TypeError):
+                    return fp.split("@", 1)[-1].split(":")[0]
+
+            def criteria(f):        # of a finding that may come from any earlier version, so of any shape
+                cited = f.get("wcag") if isinstance(f.get("wcag"), list) else []
+                return {w["sc"] for w in cited if isinstance(w, dict) and isinstance(w.get("sc"), str)}
+
+            def words(fp):
+                return set(re.split(r"[^a-z0-9]+", fp.split("@")[0])) - {"", "no", "not", "missing", "without", "the", "a", "of", "and", "for", "in", "on"}
+
+            def candidates(old_fp):
+                """Findings of this run that nobody matched yet and that may be the same problem under another slug:
+                they share two of criterion, file and a word of the slug. At most three, the likeliest first."""
+                o, found = earlier[old_fp], []
+                for fp in new:
+                    why = [w for w, yes in (("same criterion", criteria(o) & criteria(cur[fp])), ("same file", place(o, old_fp) == place(cur[fp], fp)),
+                                            ("a slug word in common", words(old_fp) & words(fp))) if yes]
+                    if len(why) >= 2:
+                        found.append((-len(why), fp, why))
+                return sorted(found)[:3]
+
+            def line(f, fp):
+                return f"- {f.get('id')} · {f.get('title')} · `{fp}`"
+            was_called = defaultdict(list)     # two earlier findings may have become one
+            for old_fp, fp in delta["matched"].items():
+                was_called[fp].append(old_fp)
+            dl = ["# Re-audit delta", "",
+                  f"resolved: {len(resolved)} · not reported again: {len(not_reported)} · still open: {len(still_open)} · regressed: {len(regressed)} · new: {len(new)}", "",
+                  f"## Not reported again ({len(not_reported)})", ""]
+            if not_reported:
+                dl += ["Nobody filed these this time. That is not the same as fixed: an agent may have chosen another slug for the same problem, or not have looked. "
+                       "Decide each one and write it in `findings/_delta-map.json`, an object with the earlier fingerprint as key, then merge again:", "",
+                       "- the same problem as a finding of this run: the value is that finding's ID or fingerprint;",
+                       "- checked in the code and gone: the value is `\"resolved\"`;",
+                       "- neither: leave it out, and it stays in this list and is reported as not reported again.", "",
+                       "A line starting with \"may be\" is a finding of this run that shares two of criterion, file and a word of the slug with the entry "
+                       "above it. Most entries have none; then look yourself. The merge checks the map: an entry that does not hold comes back as a problem to resolve.", ""]
+            for fp in not_reported:
+                dl.append(line(earlier[fp], fp))
+                dl += [f"  - may be {cur[c].get('id')} · {cur[c].get('title')} · `{c}` ({', '.join(why)})" for _, c, why in candidates(fp)]
+            dl += ["", f"## Resolved ({len(resolved)})", "", "Called resolved in `_delta-map.json`.", ""] + [line(earlier[fp], fp) for fp in resolved]
+            dl += ["", f"## Regressed ({len(regressed)})", ""] + [line(cur[fp], fp) for fp in regressed]
+            dl += ["", f"## Still open ({len(still_open)})", ""] + [line(cur[fp], fp) + (" (earlier " + ", ".join(f"`{o}`" for o in was_called[fp]) + ")" if fp in was_called else "") for fp in still_open]
+            dl += ["", f"## New ({len(new)})", ""] + [line(cur[fp], fp) for fp in new] + [""]
+            (ws / "delta.md").write_text("\n".join(dl), encoding="utf-8")
+            print(f"delta: resolved {len(resolved)}, not reported again {len(not_reported)}, still open {len(still_open)}, regressed {len(regressed)}, new {len(new)}")
+
     # --- write outputs --------------------------------------------------------------------
     cross_notes = [dict(n, agent=ag) for ag, d in agents.items() for n in (d.get("cross_lens_notes") or []) if isinstance(n, dict)]
     exceptions = [{"id": f["id"], "title": f.get("title"), **(f.get("fix", {}).get("exception") or {}),
@@ -676,6 +791,8 @@ def main():
            "positives": {ag: d.get("positives", []) for ag, d in agents.items()},
            "coverage": {r[0]: {"status": r[4], "findings": r[5].split(", ") if r[5] else [], "owner": r[3]} for r in cov_rows},
            "coverage_counts": dict(counts), "coverage_conflicts": conflicts, "persona_citations": persona_notes}
+    if delta:
+        out["delta"] = delta
     (fdir / "_merged.json").write_text(json.dumps(out, indent=2, ensure_ascii=False), encoding="utf-8")
 
     sev = Counter(f.get("severity") for f in merged)
@@ -729,29 +846,6 @@ def main():
         cov += ["", "## Persona observations touching criteria the owner passed (advisory, not conflicts)", ""] + [f"- {n}" for n in persona_notes]
     (ws / "coverage.md").write_text("\n".join(cov) + "\n", encoding="utf-8")
 
-    # --- re-audit delta -------------------------------------------------------------------
-    if a.previous:
-        if prev is not None:
-            prev_fps = {f["fingerprint"].strip().lower(): f for f in prev.get("findings", []) if f.get("fingerprint")}
-            prev_resolved = {fp.lower() for fp in (prev.get("delta") or {}).get("resolved", [])}
-            cur_fps = {f["fingerprint"].strip().lower(): f for f in merged}
-            resolved = sorted(fp for fp in prev_fps if fp not in cur_fps)
-            still_open = sorted(fp for fp in prev_fps if fp in cur_fps)
-            new = sorted(fp for fp in cur_fps if fp not in prev_fps and fp not in prev_resolved)
-            regressed = sorted(fp for fp in cur_fps if fp in prev_resolved)
-            for f in merged:
-                fp = f["fingerprint"].strip().lower()
-                f["delta"] = "regressed" if fp in regressed else "still open" if fp in still_open else "new"
-            out["delta"] = {"resolved": resolved, "still_open": still_open, "regressed": regressed, "new": new}
-            (fdir / "_merged.json").write_text(json.dumps(out, indent=2, ensure_ascii=False), encoding="utf-8")
-            dl = ["# Re-audit delta (matched on fingerprint)", "",
-                  f"resolved: {len(resolved)} · still open: {len(still_open)} · regressed: {len(regressed)} · new: {len(new)}", ""]
-            for title, fps, src in (("Resolved", resolved, prev_fps), ("Regressed", regressed, cur_fps),
-                                    ("Still open", still_open, cur_fps), ("New", new, cur_fps)):
-                dl += [f"## {title}", ""] + [f"- {src[fp]['id']} · {src[fp].get('title')} · `{fp}`" for fp in fps] + [""]
-            dl += ["Verify every 'resolved' entry in code before reporting it: an absent fingerprint can also mean the agent chose a different slug this run."]
-            (ws / "delta.md").write_text("\n".join(dl), encoding="utf-8")
-            print(f"delta: resolved {len(resolved)}, still open {len(still_open)}, regressed {len(regressed)}, new {len(new)}")
 
     print(f"{len(all_findings)} raw findings from {len(agents)} agents (+{len(persona_findings)} from personas) → {len(merged)} merged; "
           f"{len(cand)} root-cause clusters; coverage {dict(counts)}; {len(conflicts)} conflicts; {len(problems)} problems to resolve, {len(problems.notes)} settled by the merge")

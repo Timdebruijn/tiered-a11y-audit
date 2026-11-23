@@ -124,6 +124,7 @@
   ],
   "delta_h": {
     "resolved": "Resolved",
+    "not_reported": "Not reported again",
     "still_open": "Still open",
     "regressed": "Regressed",
     "new": "New"

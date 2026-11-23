@@ -345,10 +345,18 @@ def main():
     delta = data.get("delta")
     if isinstance(delta, dict):
         fp_to = {str(f.get("fingerprint", "")).strip().lower(): f for f in findings}
-        d += [f"## {t['changes']}", "", Gap("changes", "the score then and now in words, and one sentence on what the team got right and what slipped back")]
-        for key in ("resolved", "still_open", "regressed", "new"):
+        d += [f"## {t['changes']}", "", Gap("changes", "the score then and now in words, and one sentence on what the team got right and what slipped back. "
+                                                       "'Not reported again' is not 'resolved': nobody filed those findings this time and nobody checked that they are fixed, so say how many of each there are")]
+        then = delta.get("earlier") if isinstance(delta.get("earlier"), dict) else {}
+
+        def delta_line(fp):
+            if fp in fp_to:
+                return f"- {fp_to[fp]['report_id']}: {cell(fp_to[fp].get('title'))}"
+            title = (then.get(fp) or {}).get("title")      # a finding of the earlier audit: its title can be read aloud, its fingerprint cannot
+            return f"- {cell(title)}" if title else f"- `{fp}`"
+        for key in ("resolved", "not_reported", "still_open", "regressed", "new"):
             d += [f"### {t['delta_h'][key]} ({len(delta.get(key) or [])})", ""]
-            d += [f"- {fp_to[fp]['report_id']}: {cell(fp_to[fp].get('title'))}" if fp in fp_to else f"- {fp}" for fp in delta.get(key) or []] or [t["nothing"]]
+            d += [delta_line(fp) for fp in delta.get(key) or []] or [t["nothing"]]
             d.append("")
     d += [f"## {t['howto']}", ""]
     for para in t["howto_p"]:

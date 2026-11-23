@@ -53,6 +53,33 @@ def test_every_criterion_is_in_exactly_one_brief_in_every_mode():
     assert {"2.1.1", "4.1.3"} <= set(ROW.findall(brief(briefs, "keyboard-dynamic"))), "a merged agent needs the rows of both its lenses"
 
 
+def test_in_a_re_audit_each_agent_gets_the_earlier_fingerprints_of_its_own_area():
+    earlier = [{"id": "KBD-004", "title": "Menu needs\n a mouse", "fingerprint": "keyboard-inoperable@src/Menu.tsx"},
+               {"id": "VIS-002", "title": "Grey text", "fingerprint": "contrast-text@src/app.css"},
+               {"id": "ORC-001", "title": "No page title", "fingerprint": "no-title@index.html", "wcag": [{"sc": "2.4.2"}]},   # by the owner of its criterion
+               {"id": "FWK-001", "title": "No lint", "fingerprint": "no-a11y-lint@package.json"},
+               {"id": "PER-low-vision-001", "title": "Menu off screen", "fingerprint": "popover-off-screen@header"},
+               {"id": "KBD-009", "title": "No fingerprint"}, {"id": "ZZZ-001", "title": "Nobody's", "fingerprint": "odd@x"}]
+    for flags, kbd in (((), "keyboard-focus"), (("--lean",), "keyboard-dynamic"), (("--mini",), "operate")):
+        ws = Path(tempfile.mkdtemp())
+        (ws / "stack-profile.md").write_text("- Mode: test\n", encoding="utf-8")
+        (ws / "previous" / "findings").mkdir(parents=True)
+        # the earlier audit as a bare list in one run, as an object in the others
+        (ws / "previous" / "findings" / "_merged.json").write_text(json.dumps(earlier if flags else {"findings": earlier}), encoding="utf-8")
+        r = subprocess.run([sys.executable, str(HERE / "build_briefs.py"), str(SKILL), str(ws), *flags], capture_output=True, text=True)
+        assert r.returncode == 0, r.stderr
+        text = brief(ws / "briefs", kbd)
+        assert "# Findings of the earlier audit" in text and "- `keyboard-inoperable@src/Menu.tsx`: Menu needs a mouse" in text, flags
+        assert "contrast-text@" not in text and "popover-off-screen@" not in text and "odd@x" not in text, "a finding of another lens is not this agent's to refile"
+        assert text.index("# Findings of the earlier audit") < text.index("# Start of your findings file"), "the skeleton stays the last thing an expert reads"
+        assert "- `no-a11y-lint@package.json`: No lint" in brief(ws / "briefs", "framework-maximizer")
+        assert "# Findings of the earlier audit" not in brief(ws / "briefs", "low-vision-user"), "a persona walks before it reads any finding"
+        owner_of_title = [n for n in json.loads((ws / "briefs" / "_agents.json").read_text())["experts"] if "no-title@index.html" in brief(ws / "briefs", n)]
+        assert len(owner_of_title) == 1, owner_of_title
+    r, briefs = build()
+    assert "# Findings of the earlier audit" not in brief(briefs, "keyboard-focus"), "a first audit has no earlier findings"
+
+
 def test_what_only_the_orchestrator_uses_is_left_out_and_what_an_expert_needs_stays():
     _, briefs = build()
     for name in ("keyboard-focus", "framework-maximizer"):

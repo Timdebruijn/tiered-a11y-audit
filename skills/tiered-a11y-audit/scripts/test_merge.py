@@ -300,6 +300,107 @@ def test_a_previous_audit_that_is_not_there_is_a_problem_in_the_files_and_on_std
             assert word in (ws / "findings" / "_merged.md").read_text(encoding="utf-8")
 
 
+def reaudit(ws, previous, delta_map=None):
+    prev = ws.parent / "previous"
+    (prev / "findings").mkdir(parents=True, exist_ok=True)
+    (prev / "findings" / "_merged.json").write_text(json.dumps(previous), encoding="utf-8")
+    m = ws / "findings" / "_delta-map.json"
+    m.write_text(json.dumps(delta_map), encoding="utf-8") if delta_map is not None else m.unlink() if m.exists() else None
+    r = subprocess.run([sys.executable, str(HERE / "merge_findings.py"), str(ws), "--ownership", str(OWNERSHIP), "--previous", str(prev)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    merged = json.loads((ws / "findings" / "_merged.json").read_text())
+    return merged.get("delta"), merged, (ws / "delta.md").read_text(encoding="utf-8") if (ws / "delta.md").exists() else ""
+
+
+def test_an_earlier_finding_nobody_filed_again_is_not_called_resolved():
+    with tempfile.TemporaryDirectory() as d:
+        ws = claims_workspace(d, [finding("KBD-001", fingerprint="keyboard-inoperable@src/page.html"),
+                                  finding("SEM-001", fingerprint="missing-h1@src/page.html", wcag=[{"sc": "1.3.1"}]),
+                                  finding("VIS-001", fingerprint="contrast-text@src/page.html", wcag=[{"sc": "1.4.3"}])])
+        old = [{"id": "KBD-004", "title": "Menu needs a mouse", "fingerprint": "keyboard-inoperable@src/page.html"},
+               {"id": "SEM-002", "title": "No main heading", "fingerprint": "missing-heading@src/page.html", "wcag": [{"sc": "1.3.1"}]},
+               {"id": "DYN-003", "title": "Toast is not announced", "fingerprint": "no-status-message@src/toast.js", "wcag": [{"sc": "4.1.3"}]},
+               {"id": "FRM-001", "title": "Field without a label", "fingerprint": "missing-label@src/form.html", "wcag": [{"sc": "1.3.1"}]}]
+        # the earlier audit as a bare list, which is what an early version of the skill wrote
+        delta, merged, md = reaudit(ws, old)
+        assert delta["resolved"] == [] and delta["still_open"] == ["keyboard-inoperable@src/page.html"], delta
+        assert delta["not_reported"] == ["missing-heading@src/page.html", "missing-label@src/form.html", "no-status-message@src/toast.js"], delta
+        assert delta["new"] == ["contrast-text@src/page.html", "missing-h1@src/page.html"] and not merged["problems"], (delta, merged["problems"])
+        assert delta["earlier"]["no-status-message@src/toast.js"] == {"id": "DYN-003", "title": "Toast is not announced"}
+        # the same criterion in the same file: put forward as the same problem under another slug, and nothing else is
+        assert "- SEM-002 · No main heading · `missing-heading@src/page.html`\n  - may be SEM-001" in md, md
+        assert md.count("  - may be ") == 1, md
+        # the orchestrator's answer: one is the same problem, one was checked and is gone, one is left open
+        delta, merged, md = reaudit(ws, {"findings": old}, {"missing-heading@src/page.html": "SEM-001", "no-status-message@src/toast.js": "resolved"})
+        assert delta["resolved"] == ["no-status-message@src/toast.js"] and delta["not_reported"] == ["missing-label@src/form.html"], delta
+        assert delta["still_open"] == ["keyboard-inoperable@src/page.html", "missing-h1@src/page.html"] and delta["new"] == ["contrast-text@src/page.html"], delta
+        assert {f["id"]: f["delta"] for f in merged["findings"]} == {"KBD-001": "still open", "SEM-001": "still open", "VIS-001": "new"}
+        assert "(earlier `missing-heading@src/page.html`)" in md and not merged["problems"], merged["problems"]
+        # a match by fingerprint works as well as one by ID
+        delta, _, _ = reaudit(ws, old, {"missing-heading@src/page.html": "missing-h1@src/page.html"})
+        assert "missing-h1@src/page.html" in delta["still_open"], delta
+
+
+def test_a_map_that_does_not_hold_is_a_problem_in_every_file():
+    with tempfile.TemporaryDirectory() as d:
+        ws = claims_workspace(d, [finding("KBD-001", fingerprint="keyboard-inoperable@src/page.html")])
+        old = [{"id": "KBD-004", "title": "Menu needs a mouse", "fingerprint": "keyboard-inoperable@src/page.html"},
+               {"id": "SEM-002", "title": "No main heading", "fingerprint": "missing-heading@src/page.html"}]
+        delta, merged, _ = reaudit(ws, old, {"never-seen@x": "KBD-001", "missing-heading@src/page.html": "KBD-009",
+                                             "keyboard-inoperable@src/page.html": "resolved"})
+        said = [p for p in merged["problems"] if p.startswith("_delta-map.json")]
+        assert len(said) == 3 and "no fingerprint of the earlier audit" in said[0] and "neither a finding of this run" in said[1] and "KBD-001 of this run has that fingerprint" in said[2], said
+        assert delta["resolved"] == [] and delta["not_reported"] == ["missing-heading@src/page.html"], delta      # nothing is taken from a wrong entry
+        assert "_delta-map.json:" in (ws / "findings" / "_merged.md").read_text(encoding="utf-8"), "the phase check reads the list, and the orchestrator the file"
+
+
+def test_what_came_back_is_named_for_what_it_was():
+    with tempfile.TemporaryDirectory() as d:
+        ws = claims_workspace(d, [finding("KBD-001", fingerprint="keyboard-inoperable@src/page.html"), finding("SEM-001", fingerprint="missing-h1@src/page.html")])
+        # the earlier audit called one resolved after a check, and did not see the other again
+        delta, _, _ = reaudit(ws, {"findings": [], "delta": {"resolved": ["keyboard-inoperable@src/page.html"], "not_reported": ["missing-h1@src/page.html"]}})
+        assert delta["regressed"] == ["keyboard-inoperable@src/page.html"] and delta["still_open"] == ["missing-h1@src/page.html"] and delta["new"] == [], delta
+        # a delta from before "not reported again" existed: its "resolved" was never a check, so what is back did not regress
+        delta, _, _ = reaudit(ws, {"findings": [], "delta": {"resolved": ["keyboard-inoperable@src/page.html"]}})
+        assert delta["regressed"] == [] and delta["still_open"] == ["keyboard-inoperable@src/page.html"] and delta["new"] == ["missing-h1@src/page.html"], delta
+
+
+def test_what_was_not_seen_twice_stays_on_the_list_with_its_title():
+    with tempfile.TemporaryDirectory() as d:
+        ws = claims_workspace(d, [finding("KBD-001", fingerprint="keyboard-inoperable@src/page.html")])
+        prev = {"findings": [{"id": "KBD-004", "title": "Menu needs a mouse", "fingerprint": "keyboard-inoperable@src/page.html"}],
+                "delta": {"resolved": [], "not_reported": ["no-status-message@src/toast.js"],
+                          "earlier": {"no-status-message@src/toast.js": {"id": "DYN-003", "title": "Toast is not announced"}}}}
+        delta, _, md = reaudit(ws, prev)
+        assert delta["not_reported"] == ["no-status-message@src/toast.js"], delta
+        assert delta["earlier"]["no-status-message@src/toast.js"]["title"] == "Toast is not announced" and "Toast is not announced" in md
+        delta, merged, _ = reaudit(ws, prev, {"no-status-message@src/toast.js": "resolved"})        # and it can be settled like any other
+        assert delta["resolved"] == ["no-status-message@src/toast.js"] and delta["not_reported"] == [] and not merged["problems"], (delta, merged["problems"])
+
+
+def test_the_map_takes_two_earlier_findings_into_one_and_refuses_an_entry_for_what_matched_already():
+    with tempfile.TemporaryDirectory() as d:
+        ws = claims_workspace(d, [finding("KBD-001", fingerprint="keyboard-inoperable@src/page.html"), finding("SEM-001", fingerprint="missing-h1@src/page.html")])
+        old = [{"id": "KBD-004", "title": "Menu needs a mouse", "fingerprint": "keyboard-inoperable@src/page.html"},
+               {"id": "SEM-002", "title": "No heading on Alerts", "fingerprint": "missing-heading@src/alerts.html"},
+               {"id": "SEM-003", "title": "No heading on Agents", "fingerprint": "missing-heading@src/agents.html"}]
+        delta, merged, md = reaudit(ws, old, {"missing-heading@src/alerts.html": "SEM-001", " Missing-Heading@src/agents.html ": "SEM-001"})
+        assert delta["not_reported"] == [] and not merged["problems"], (delta, merged["problems"])
+        assert "(earlier `missing-heading@src/agents.html`, `missing-heading@src/alerts.html`)" in md, md
+        delta, merged, _ = reaudit(ws, old, {"keyboard-inoperable@src/page.html": "SEM-001"})
+        assert any("needs no entry, KBD-001 of this run has that fingerprint" in p for p in merged["problems"]), merged["problems"]
+        assert delta["matched"] == {}, delta
+
+
+def test_an_earlier_audit_of_any_shape_does_not_stop_the_merge():
+    with tempfile.TemporaryDirectory() as d:
+        ws = claims_workspace(d, [finding("KBD-001", fingerprint="keyboard-inoperable@src/page.html")])
+        odd = [{"id": "A", "fingerprint": "a@x", "wcag": 5}, {"id": "B", "fingerprint": "b@x", "wcag": [{"sc": ["1"]}]},
+               {"id": "C", "fingerprint": "c@x", "wcag": ["1.1.1"], "evidence": "somewhere"}, "a string", {"id": "D"}, {"id": "E", "fingerprint": 7}]
+        delta, merged, _ = reaudit(ws, {"findings": odd, "delta": {"resolved": 5, "not_reported": "x", "earlier": []}})
+        assert delta["not_reported"] == ["7", "a@x", "b@x", "c@x"] and delta["new"] == ["keyboard-inoperable@src/page.html"], delta
+
+
 def test_a_personas_criterion_is_settled_and_an_experts_is_asked_about():
     with tempfile.TemporaryDirectory() as d:
         ws = claims_workspace(d, [finding("OK-001"), finding("AAA-001", wcag=[{"sc": "2.4.9"}]), finding("NONE-001", wcag=[])])

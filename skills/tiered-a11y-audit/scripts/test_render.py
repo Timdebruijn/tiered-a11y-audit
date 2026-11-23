@@ -266,6 +266,31 @@ def test_the_draft_no_longer_asks_for_a_translation():
     assert "translated" not in draft.split("-->", 1)[1], "a gap further down still asks for a translation"
 
 
+def test_a_re_audit_lists_what_nobody_filed_again_apart_from_what_is_resolved_and_by_its_title():
+    run([finding("KBD-001")])
+    ws = LAST_WS
+    prev = ws.parent / "previous" / "findings"
+    prev.mkdir(parents=True)
+    prev.joinpath("_merged.json").write_text(json.dumps([
+        {"id": "KBD-004", "title": "Menu needs a mouse", "fingerprint": "kbd-001@src/page.html"},
+        {"id": "SEM-002", "title": "No main heading", "fingerprint": "missing-heading@src/page.html"},
+        {"id": "DYN-003", "title": "Toast is not announced", "fingerprint": "no-status-message@src/toast.js"}]), encoding="utf-8")
+    (ws / "findings" / "_delta-map.json").write_text(json.dumps({"no-status-message@src/toast.js": "resolved"}), encoding="utf-8")
+    m = subprocess.run([sys.executable, str(HERE / "merge_findings.py"), str(ws), "--ownership", str(OWNERSHIP), "--previous", str(prev.parent)], capture_output=True, text=True)
+    assert m.returncode == 0, m.stderr
+    for lang, heads in (("en", ("### Resolved (1)", "### Not reported again (1)", "### Still open (1)")), ("nl", ("### Opgelost (1)", "### Niet opnieuw gemeld (1)", "### Nog open (1)"))):
+        r, draft, _ = run(None, lang=lang, ws=ws)
+        assert r.returncode == 0, r.stderr
+        for h in heads:
+            assert h in draft, (h, draft[:1500])
+        resolved = draft.split(heads[0])[1].split("###")[0]
+        unreported = draft.split(heads[1])[1].split("###")[0]
+        assert "- Toast is not announced" in resolved and "No main heading" not in resolved, resolved
+        assert "- No main heading" in unreported, unreported
+        assert "missing-heading@" not in draft and "no-status-message@" not in draft, "a fingerprint is not a line a reader can use"
+        assert "- T1-01: Title of KBD-001" in draft.split(heads[2])[1].split("###")[0]
+
+
 def test_dutch_uses_one_word_per_severity():
     _, draft, ids = run(FINDINGS, "nl")
     assert "| blokkerend |" in draft and "Ernst blokkerend," in draft, "table and block disagree on the severity word"
