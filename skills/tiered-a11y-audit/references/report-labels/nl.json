@@ -124,6 +124,7 @@
   ],
   "delta_h": {
     "resolved": "Opgelost",
+    "not_reported": "Niet opnieuw gemeld",
     "still_open": "Nog open",
     "regressed": "Teruggevallen",
     "new": "Nieuw"

@@ -24,7 +24,7 @@ Five to eight plain sentences, no table, no list: what was audited, the score no
 One paragraph: the score now and after each tier, each with its one-sentence justification, written as prose. Then one sentence announcing the table, and one table with four columns: Tier, Findings, Highest severity, Estimated effort. Then one numbered list, "Top 5 actions", one line per action with ID, tier and effort. Blockers and findings flagged `affects_all_users` are the first items of that list, marked with the word "blocker" or "affects everyone". Close with one short paragraph: date, commit, scope, stack, standard and method (details in appendix A).
 
 ## Changes since the previous audit                   [Wijzigingen sinds vorige audit]   (re-audit mode only)
-Score then and now in words. Then four short lists: resolved, still open, regressed, new (one line per finding: ID, title). One sentence on what the team got right and what slipped back.
+Score then and now in words. Then five short lists: resolved, not reported again, still open, regressed, new (one line per finding: ID, title; for a finding of the earlier audit its title). "Resolved" holds only what was checked in the code; what nobody filed this time and nobody checked is "not reported again". One sentence on what the team got right and what slipped back.
 
 ## How to read this report                           [Leeswijzer]
 Three short paragraphs: what each tier promises; that severity and tier are independent; that personas are AI simulations and not a substitute for testing with disabled users.

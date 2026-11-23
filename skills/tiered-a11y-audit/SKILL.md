@@ -55,7 +55,7 @@ The person running this skill may use a screen reader or text-to-speech, magnifi
 | **Lean full audit** | Same ask, but the UI is small: ≤ ~25 project-owned UI files (the detector's "Scope" line) or ≤ ~5 views | Same phases, 4 merged expert agents instead of 6 (see Phase 4), the 4 core personas plus triggered ones only on a strong trigger |
 | **Mini full audit** | Whole site, but ≤ ~10 project-owned UI files, no forms beyond a search box, at most two interactive widgets (check `pattern-inventory.md`: form controls, modal-like classes, key handlers) | Same phases, 2 merged expert agents (perceive: structure + content + visual; operate: keyboard + dynamic + forms), 2 personas (screen reader + one chosen by the product: low vision for content sites, motor/voice for tools), maximizer post-pass. About a third of the full cost. |
 | **Focused review** | One component, page, feature or PR/diff ("check this modal", "review this PR for a11y") | Phase 0, then you apply the relevant expert lenses yourself (read their files, no subagents), one or two personas inline, `contrast.py` for any colour, and a short three-tier answer in chat. Files only if the user wants them. |
-| **Re-audit** | `.a11y-audit/` or an older report exists and the user asks what's left, whether fixes worked, or for an update | Full audit; the merge script compares on `fingerprint` and writes `delta.md` (resolved / still open / regressed / new) and the score delta leads the summary |
+| **Re-audit** | `.a11y-audit/` or an older report exists and the user asks what's left, whether fixes worked, or for an update | Full audit; the merge script compares on `fingerprint` and writes `delta.md` (resolved / not reported again / still open / regressed / new) and the score delta leads the summary |
 | **Apply fixes** | The user asks to fix tier 1 (or a specific finding) | Implement from the report, one commit per root cause, add a regression test per fix; re-run the automated scan if available |
 
 The mode is decided after Phase 0 (the detector tells you the UI size and whether there is a UI at all).
@@ -84,7 +84,7 @@ Create `.a11y-audit/` in the repo root. It holds screenshots (easily several MB)
 ├── coverage.md             # the 55-criterion matrix with conflicts (Phases 4–6)
 ├── personas/<persona>.md   # one file per persona agent (Phase 5)
 ├── previous/               # re-audit: the whole earlier audit, moved here by preflight.py --start
-├── delta.md                # re-audit: resolved / open / new / regressed (Phase 6)
+├── delta.md                # re-audit: resolved / not reported again / open / new / regressed (Phase 6)
 └── REPORT.md               # the deliverable, assembled by the renderer from the draft and your prose; never edited by hand (Phase 6)
 ```
 
@@ -255,7 +255,7 @@ One progress line when they start, none in between. When all are done, run the m
 1. **Final verification**: persona-new findings and every *serious* finding that is cheap to reproduce at runtime (a click and a look — that is where bugs that hurt everyone surface). Keep the severity floors unless a persona's trace doesn't hold up. Resolve the conflicts listed in `coverage.md`, and decide each persona observation it lists: where the persona is right about a criterion its owner passed, change the status in the owner's findings file, add the finding's ID to that criterion's `findings` list (a `fail` without one comes back as a conflict), and merge again; otherwise leave it as the advisory note it is.
 2. **Tiers**: the script derived them from `visual_impact`; check them against `references/tiering.md` and overrule only with a stated reason. A finding that still needs splitting into a tier-1 and a tier-2 part is split in its findings file and merged again, never in the report.
 3. **Colours**: the visual lens should already have run `scripts/contrast.py` on every contrast finding; fill any gap (`fix` keeps the hue and reports ΔE) so every tier-2 colour change has before/after values and a ratio.
-4. **Re-audit only**: run the merge script with `--previous <repo>/.a11y-audit/previous` to get `delta.md` (resolved / still open / regressed / new by fingerprint); lead the summary with the delta and the score change.
+4. **Re-audit only**: run the merge script with `--previous <repo>/.a11y-audit/previous` to get `delta.md`. It matches on `fingerprint`, and a fingerprint is a slug an agent chose: the same problem can come back under another one, so an earlier finding that nobody filed again is listed as "not reported again", never as resolved. Go through that list. Under each entry the script names the findings of this run that may be the same problem. Write `findings/_delta-map.json`, an object with the earlier fingerprint as key: the ID or fingerprint of this run's finding when it is the same problem, or `"resolved"` once you have opened the code and seen that it is fixed. Leave out what you could not settle; it stays "not reported again" in the report. Merge again with `--previous`, then lead the summary with the delta and the score change, and keep the two words apart there: resolved was checked, not reported again was not.
 5. **Score** now and after each tier with the rubric in `references/tiering.md`.
 6. **Render, write the prose, render again**:
    ```
@@ -292,7 +292,7 @@ Exports, on request or when the context calls for them (a team that works from t
 - `scripts/preflight.py` — Phase 0 in one read-only command (git and ignore status, earlier audit or unfinished run, audit size, tools, detector output); with `--start` the workspace set-up, re-audit rotation and ignore lines.
 - `scripts/extract_colors.py` — colour tokens per scheme and failing foreground/background pairs, with what a narrower selector or media query changes listed apart as a variant.
 - `scripts/aria_digest.py` — per-view digest of the accessibility trees: landmarks, headings, nameless controls, duplicate names.
-- `scripts/build_briefs.py` — one briefing file per subagent with only the reference parts that agent acts on, each lens's with the start of its findings file, and the list of agents for the phase check.
+- `scripts/build_briefs.py` — one briefing file per subagent with only the reference parts that agent acts on, each lens's with the start of its findings file, and the list of agents for the phase check. In a re-audit each brief also lists the earlier audit's findings in that agent's area, so that a problem found again keeps its fingerprint.
 - `scripts/check_phase.py` — the phase check: what phases 3, 4, 5 and 6 must have left before the next one starts.
 - `scripts/merge_findings.py` — merges findings, derives tiers, clusters root causes, links persona verdicts, builds the coverage matrix, re-audit delta.
 - `scripts/render_report_parts.py` — generates the draft report (every table, finding block and appendix, with consistent report IDs and the gaps for prose marked), the prose file with one section per gap, and from those two the report itself.
