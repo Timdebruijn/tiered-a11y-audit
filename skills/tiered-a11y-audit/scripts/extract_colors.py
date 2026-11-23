@@ -9,7 +9,8 @@ colour scheme of each definition (default, dark via prefers-color-scheme / [data
 light-dark(a, b)) and the scope it is declared under. A declaration under :root, html, body or :host is the
 base. One under a narrower selector or a media query (:root[data-contrast="high"], @media (prefers-contrast:
 more), .card) is a variant: it is listed apart with what it changes, and never replaces the base value.
-Resolves var() and variable references. Classifies tokens by NAME as foreground-like or background-like and
+Resolves var() and variable references; under a variant on the root a token that refers to a changed one
+changes with it. This is not the cascade: a variant always wins over the base, whatever the specificity. Classifies tokens by NAME as foreground-like or background-like and
 computes the WCAG ratio for every fg×bg pair per scheme, failing pairs first, and again under each variant
 for the pairs that variant changes. Pairs are candidates: the expert checks which combinations are actually
 used together. A pair of two status or brand colours of different families (--good on --warn) is left out.
@@ -69,8 +70,14 @@ BOTH_WORDS = re.compile(r"(^|[-_])(accent|primary|brand|good|ok|success|warn|war
 # One colour function and nothing else: what is worth reporting when it cannot be turned into sRGB. A shadow or a
 # gradient that merely contains a colour is not a colour token.
 COLOUR_FUNCTION = re.compile(r"(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix)\((?:[^()]|\([^()]*\))*\)", re.I)
-SCHEME_QUALIFIER = re.compile(r"""\[data-theme=["'](?:dark|light)["']\]|\[dark\]|\.(?:theme-)?(?:dark|light)(?![\w-])""", re.I)
-BASE_SELECTOR = re.compile(r":root|:host|(?<![\w.#-])(?:html|body)(?![\w-])|\*|&|:(?:not|where|is)\(\s*\)|[\s>+~]", re.I)
+# What marks a selector as the light or the dark scheme. scheme_of and variant_of both read it, so that a dark theme
+# is a scheme for both and never a variant.
+SCHEME_QUALIFIER = re.compile(r"""\[data-theme=["']?(dark|light)["']?\]|\[(dark|light)\]|\.(?:theme-)?(dark|light)(?:-mode|-theme)?(?![\w-])""", re.I)
+BASE_ELEMENT = r":root|:host|(?<![\w.#-])(?:html|body)(?![\w-])"
+BASE_SELECTOR = re.compile(BASE_ELEMENT + r"|\*|&|:(?:not|where|is)\([\s,]*\)|[\s>+~]", re.I)
+# Words that make a name text and not a signal: --text-primary is body text, --primary is a brand colour.
+FG_ONLY_WORDS = re.compile(r"(^|[-_])(fg|text|ink|foreground|on|muted|dim|dimmed|subtle|secondary|tertiary|link|placeholder|heading|label|caption|icon)([-_0-9]|$)", re.I)
+ROOT_WIDE = {}      # variant -> True when it is declared on the root element itself, filled by variant_of
 HSL = re.compile(r"hsla?\(\s*([\d.]+)(deg)?[\s,]+([\d.]+)%[\s,]+([\d.]+)%", re.I)
 
 
@@ -105,32 +112,8 @@ def to_rgb(value: str):
 
 def scheme_of(selector_stack):
     s = " ".join(selector_stack).lower()
-    if "prefers-color-scheme: dark" in s or "prefers-color-scheme:dark" in s or "data-theme=\"dark\"" in s or "data-theme='dark'" in s or ".dark" in s or "[dark]" in s or "theme-dark" in s:
-        return "dark"
-    if "prefers-color-scheme: light" in s or "data-theme=\"light\"" in s or ".light" in s:
-        return "light"
-    return "default"
-
-
-def variant_of(selector_stack):
-    """'' for a declaration in the base scope, otherwise the narrower scope it sits in, as written.
-
-    The base is :root, html, body, :host or *, with or without what scheme_of reads as light or dark. Anything
-    else narrows it: an attribute or class on the root (a reader setting), a component selector, a media or
-    container query other than the colour scheme. A selector list is base when one of its selectors is.
-    """
-    parts = []
-    for sel in selector_stack:
-        sel = " ".join(sel.split())
-        if sel.startswith("@"):
-            m = re.match(r"@(?:media|container)\b(.*)", sel, re.I)
-            if m and re.sub(r"\(\s*prefers-color-scheme\s*:\s*\w+\s*\)|\b(?:and|only|screen|all)\b|\s", "", m.group(1), flags=re.I):
-                parts.append(sel)
-            continue        # @layer, @supports, @theme and the like do not change which value applies
-        # ponytail: a comma inside :is() or :where() splits too; parse the selector if that ever misfiles a token
-        if sel and all(BASE_SELECTOR.sub("", SCHEME_QUALIFIER.sub("", part)) for part in sel.split(",")):
-            parts.append(sel)
-    return " ".join(parts)
+    m = re.search(r"prefers-color-scheme\s*:\s*(dark|light)", s) or SCHEME_QUALIFIER.search(s)
+    return next(g for g in m.groups() if g) if m else "default"
 
 
 def split_top(s: str):
@@ -146,11 +129,63 @@ def split_top(s: str):
     return out + [cur.strip()]
 
 
-def extract_from_css(css: str, rel: str, tokens):
+def narrowing(selector: str) -> str:
+    """What is left of one selector once the base elements and the scheme qualifiers are taken out; '' for the base."""
+    rest, before = SCHEME_QUALIFIER.sub("", selector), None
+    while rest != before:       # :is(:root, html) is empty only after its arguments are gone
+        before, rest = rest, BASE_SELECTOR.sub("", rest)
+    return rest
+
+
+def variant_of(selector_stack):
+    """'' for a declaration in the base scope, otherwise the narrower scope it sits in, as written.
+
+    The base is :root, html, body, :host or *, with or without what scheme_of reads as light or dark. Anything
+    else narrows it: an attribute or class on the root (a reader setting), a component selector, a media or
+    container query other than the colour scheme. A selector list is base when one of its selectors is.
+    """
+    parts, wide = [], True
+    for sel in selector_stack:
+        if sel.startswith("@"):
+            m = re.match(r"@(?:media|container)\b(.*)", sel, re.I)
+            if m and re.sub(r"\(\s*prefers-color-scheme\s*:\s*\w+\s*\)|\b(?:and|only|screen|all)\b|\s", "", m.group(1), flags=re.I):
+                parts.append(sel)
+            continue        # @layer, @supports, @theme and the like do not change which value applies
+        listed = split_top(sel)
+        if sel and all(narrowing(part) for part in listed):
+            parts.append(sel)
+            # on the root element itself: one compound selector that names it, not something inside it
+            wide = wide and all(re.search(BASE_ELEMENT, part, re.I) and not re.search(r"[\s>+~]", part) for part in listed)
+    label = " ".join(parts)
+    if label:
+        ROOT_WIDE[label] = wide
+    return label
+
+
+def extract_from_css(css: str, rel: str, tokens, outer=()):
     """tokens[name][(variant, scheme)] = (value, rel). Walks blocks tracking selector/at-rule nesting."""
-    stack = []
+    stack = list(outer)
     i, n = 0, len(css)
-    buf = ""
+    buf = pending = ""      # buf: the line being read; pending: earlier lines of a selector or a value that runs on
+
+    def declare(line):
+        m = re.match(r"(--[\w-]+|\$[\w-]+|@[\w-]+)\s*:\s*([^;]+)$", line)
+        if not m or line.startswith(("@media", "@import")):
+            return False
+        name, val = m.group(1), re.sub(r"\s*!(default|important)\s*$", "", m.group(2).strip())
+        sch, var = scheme_of(stack), variant_of(stack)
+        ld = re.match(r"light-dark\((.+)\)$", val, re.I)
+        ld = split_top(ld.group(1)) if ld else []
+        if len(ld) == 2:
+            tokens[name][(var, "light")] = (ld[0], rel)
+            tokens[name][(var, "dark")] = (ld[1], rel)
+        else:
+            tokens[name][(var, sch)] = (val, rel)
+        return True
+
+    def whole():
+        return " ".join((pending + " " + buf).split())
+
     while i < n:
         ch = css[i]
         if css.startswith("/*", i):
@@ -158,38 +193,22 @@ def extract_from_css(css: str, rel: str, tokens):
             i = n if j < 0 else j + 2
             continue
         if ch == "{":
-            stack.append(buf.strip())
-            buf = ""
-            i += 1
-            continue
-        elif ch == "}":
-            # a declaration without a trailing semicolon (minified CSS): flush it before closing the block
-            css = css[:i] + ";" + css[i:] if buf.strip() else css
-            if buf.strip():
-                n += 1
-                continue
-            if stack:
+            stack.append(whole())
+            buf = pending = ""
+        elif ch == ";" or ch == "}":
+            declare(whole())    # at a brace: a declaration without a trailing semicolon (minified CSS)
+            buf = pending = ""
+            if ch == "}" and len(stack) > len(outer):
                 stack.pop()
-            buf = ""
-            i += 1
-            continue
-        elif ch == ";" or ch == "\n":
-            i += 1
+        elif ch == "\n":
             line = buf.strip()
+            # A line that is a whole declaration ends here (Sass without semicolons). Anything else runs on to the
+            # next line: a selector with its brace below it, a selector list, a value over several lines.
+            if not (line.count("(") == line.count(")") and declare(line)) and not line.startswith("//"):
+                pending += " " + line
             buf = ""
-            m = re.match(r"(--[\w-]+|\$[\w-]+|@[\w-]+)\s*:\s*([^;]+)$", line)
-            if m and not line.startswith("@media") and not line.startswith("@import"):
-                name, val = m.group(1), re.sub(r"\s*!(default|important)\s*$", "", m.group(2).strip())
-                sch, var = scheme_of(stack), variant_of(stack)
-                ld = re.match(r"light-dark\((.+)\)$", val, re.I)
-                ld = split_top(ld.group(1)) if ld else []
-                if len(ld) == 2:
-                    tokens[name][(var, "light")] = (ld[0], rel)
-                    tokens[name][(var, "dark")] = (ld[1], rel)
-                else:
-                    tokens[name][(var, sch)] = (val, rel)
-            continue
-        buf += ch
+        else:
+            buf += ch
         i += 1
 
 
@@ -216,10 +235,6 @@ def resolve(tokens, name, scheme, variant="", depth=0):
     return val
 
 
-def is_root_wide(variant: str) -> bool:
-    return variant.startswith(("@", ":root", "html", "body", ":host"))
-
-
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("root", nargs="?", default=".")
@@ -243,7 +258,7 @@ def main():
         dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS and not d.startswith(".")
                              and not (at_root and d in INFRA_DIRS)
                              and f"{rel}/{d}".lstrip("./") not in build and (not at_root or d not in build))
-        for f in sorted(filenames):     # sorted, so that "the first declaration" below means the same on every machine
+        for f in sorted(filenames):     # sorted, so that which of two declarations is the later one does not depend on the machine
             p = Path(dirpath) / f
             ext = p.suffix.lower()
             if ext not in STYLE_EXT and ext not in EMBED_EXT:
@@ -256,17 +271,38 @@ def main():
             if ext in STYLE_EXT:
                 extract_from_css(txt, rel, tokens)
             else:
-                for m in re.finditer(r"<style[^>]*>([\s\S]*?)</style>", txt, re.I):
-                    extract_from_css(m.group(1), rel, tokens)
+                for m in re.finditer(r"<style([^>]*)>([\s\S]*?)</style>", txt, re.I):
+                    media = re.search(r"""\bmedia=["']([^"']+)["']""", m.group(1), re.I)
+                    extract_from_css(m.group(2), rel, tokens, (f"@media {media.group(1)}",) if media else ())
 
-    # A token declared only under narrower selectors (a component's own --btn-bg) has no base to differ from:
-    # its first declaration is its base, and any later scope is a variant of that.
-    for t in tokens.values():
+    # A token declared only under narrower selectors (a component's own --btn-bg) has no base to differ from: the
+    # declaration under its plainest selector is its base, and any other scope is a variant of that.
+    declared = defaultdict(set)     # variant -> the tokens it declares
+    for name, t in tokens.items():
         if not any(v == "" for v, _ in t):
-            first = next(iter(t))[0]
-            for v, s in [k for k in t if k[0] == first]:
+            plainest = min((v for v, _ in t), key=len)
+            for v, s in [k for k in t if k[0] == plainest]:
                 t[("", s)] = t.pop((v, s))
-    variants = sorted({v for t in tokens.values() for v, _ in t} - {""}, key=lambda v: (not is_root_wide(v), v))
+        for v, _ in t:
+            declared[v].add(name)
+    variants = sorted(set(declared) - {""}, key=lambda v: (not ROOT_WIDE.get(v), v))
+    referring = defaultdict(set)    # token -> the tokens whose value is a reference to it
+    for name, t in tokens.items():
+        for val, _ in t.values():
+            m = re.match(r"var\(\s*(--[\w-]+)|(\$[\w-]+|@[\w-]+)$", val)
+            if m:
+                referring[m.group(1) or m.group(2)].add(name)
+
+    def touched_by(var):
+        """The tokens a variant declares. A variant on the root itself also changes the tokens that refer to those,
+        since they are computed on the same element; inside a component they keep the value they inherit."""
+        own = set(declared[var])
+        todo = list(own) if ROOT_WIDE.get(var) else []
+        while todo:
+            for dep in referring[todo.pop()] - own:
+                own.add(dep)
+                todo.append(dep)
+        return sorted(own)
 
     # resolve to colours per scheme, for the base and for what each variant changes
     schemes = sorted({s for t in tokens.values() for _, s in t} | {"default"})
@@ -275,7 +311,7 @@ def main():
     colours = {}  # (name, scheme, variant) -> (rgb, hex, source); a variant holds only what differs from the base
     unresolved = []
     for var in [""] + variants:
-        for name in tokens:
+        for name in (touched_by(var) if var else tokens):
             for sch in schemes:
                 val = resolve(tokens, name, sch, var)
                 if val is None:
@@ -296,29 +332,36 @@ def main():
         return colours.get((name, sch, var)) or colours.get((name, sch, ""))
 
     def family(name):
+        """The status or brand a signal colour belongs to; None for text, which may sit on any of them."""
         m = BOTH_WORDS.search(name)
-        return m.group(2).lower() if m else None
+        return m.group(2).lower() if m and not FG_ONLY_WORDS.search(name) else None
 
     names = sorted({n for n, _, _ in colours})
     fg = [n for n in names if FG_WORDS.search(n) and not (BG_WORDS.search(n) and not BOTH_WORDS.search(n))]
     bg = [n for n in names if BG_WORDS.search(n) or BOTH_WORDS.search(n)]
+    changed = [(v, n, s) for v in variants for n in names for s in schemes if (n, s, v) in colours] if variants else []
+    by_variant = defaultdict(set)   # (variant, scheme) -> the tokens whose colour differs from the base there
+    for v, n, s in changed:
+        by_variant[(v, s)].add(n)
     pairs, cross_family = [], 0
     for var in [""] + variants:
         for sch in schemes:
-            touched = {n for n in names if (n, sch, var) in colours}    # under a variant: only the pairs it changes
-            for f in fg if touched else []:
-                for b in bg:
-                    cf, cb = colour(f, sch, var), colour(b, sch, var)
-                    if f == b or not cf or not cb or (var and f not in touched and b not in touched):
-                        continue
-                    if family(f) and family(b) and family(f) != family(b) and not BG_WORDS.search(b):
-                        cross_family += not var     # --good on --warn: two signals, not text on a surface
-                        continue
-                    r = ratio(cf[0], cb[0])
-                    pairs.append({"variant": var, "scheme": sch, "fg": f, "fg_hex": cf[1], "bg": b, "bg_hex": cb[1],
-                                  "ratio": round(r, 2), "aa_text": r >= 4.5, "aa_large_or_nontext": r >= 3.0})
+            if var:     # under a variant: only the pairs it changes
+                touched = by_variant[(var, sch)]
+                combos = [(f, b) for f in fg if f in touched for b in bg] + [(f, b) for b in bg if b in touched for f in fg if f not in touched]
+            else:
+                combos = [(f, b) for f in fg for b in bg]
+            for f, b in combos:
+                cf, cb = colour(f, sch, var), colour(b, sch, var)
+                if f == b or not cf or not cb:
+                    continue
+                if family(f) and family(b) and family(f) != family(b) and not BG_WORDS.search(b):
+                    cross_family += not var     # --good on --warn: two signals, not text on a surface
+                    continue
+                r = ratio(cf[0], cb[0])
+                pairs.append({"variant": var, "scheme": sch, "fg": f, "fg_hex": cf[1], "bg": b, "bg_hex": cb[1],
+                              "ratio": round(r, 2), "aa_text": r >= 4.5, "aa_large_or_nontext": r >= 3.0})
     pairs.sort(key=lambda p: (p["aa_text"], p["aa_large_or_nontext"], p["ratio"]))
-    changed = [(v, n, s) for v in variants for n in names for s in schemes if (n, s, v) in colours]
     if a.json:
         print(json.dumps({"tokens": {f"{n}@{s}": {"hex": h, "source": src} for (n, s, v), (_, h, src) in colours.items() if not v},
                           "variants": {v: {f"{n}@{s}": {"hex": colours[(n, s, v)][1], "base": (colours.get((n, s, "")) or (0, None))[1],
@@ -328,7 +371,7 @@ def main():
         return 0
 
     def code(text):     # a selector in a table cell
-        return "`" + text.replace("|", "\\|") + "`"
+        return "`" + text.replace("|", "\\|").replace("`", "'") + "`"
 
     base_names = sorted({n for n, _, v in colours if not v})
     print(f"# Colour tokens and contrast pairs — {root}\n")
