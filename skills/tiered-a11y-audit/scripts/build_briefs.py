@@ -112,16 +112,15 @@ PREFIX_LENS = {"SEM": "semantics-structure", "KBD": "keyboard-focus", "VIS": "vi
 
 def earlier_findings(prev, owners: dict) -> dict:
     """reader -> the lines of the earlier audit's findings that are its own: a lens by ID prefix, or else by the owner of
-    the first criterion; a persona by its PER- prefix. A finding that fits neither goes to nobody."""
+    the first criterion. A persona's finding goes to nobody: a persona walks the flows before it reads any finding, and its
+    brief is the first thing it reads. Neither does a finding without a lens prefix and without a criterion."""
     out = {}
     for f in (prev or {}).get("findings") or []:
         fid, fp = str(f.get("id") or ""), str(f.get("fingerprint") or "").strip()
         if not fp:
             continue
-        per = re.match(r"PER-([a-z-]+?)-x?\d+$", fid)
-        scs = [w.get("sc") for w in f.get("wcag") or [] if isinstance(w, dict)]
-        reader = (per.group(1) + "-user" if per else PREFIX_LENS.get(fid[:3])
-                  or next((owners[sc]["owner"] for sc in scs if sc in owners), None))
+        scs = [w.get("sc") for w in (f.get("wcag") if isinstance(f.get("wcag"), list) else []) if isinstance(w, dict) and isinstance(w.get("sc"), str)]
+        reader = None if fid.startswith("PER-") else PREFIX_LENS.get(fid[:3]) or next((owners[sc]["owner"] for sc in scs if sc in owners), None)
         if reader:
             out.setdefault(reader, []).append(f"- `{fp}`: {' '.join(str(f.get('title') or '').split())}")
     return out
@@ -203,9 +202,9 @@ def main():
         schema, tiering, own_rows(ownership, [], owners), "# Stack profile\n\n" + profile + extras, "# Framework playbook (relevant sections)\n\n" + pb],
         ["framework-maximizer"]), encoding="utf-8")
     for p in PERSONAS:
-        (out / f"{p}.md").write_text(with_earlier([
+        (out / f"{p}.md").write_text("\n\n---\n\n".join([
             f"# Briefing: {p}", persona_proto, rd(sd / "agents" / "personas" / f"{p}.md"), persona_schema,
-            "# Stack profile\n\n" + profile + extras], [p]), encoding="utf-8")
+            "# Stack profile\n\n" + profile + extras]), encoding="utf-8")
     (out / "_agents.json").write_text(json.dumps({"mode": "mini" if a.mini else "lean" if a.lean else "full", "experts": agents,
                                                   "maximizer": "framework-maximizer", "personas": PERSONAS}, indent=2), encoding="utf-8")
     print(f"briefs written to {out} ({len(agents)} expert, 1 maximizer, {len(PERSONAS)} persona); playbook sections {sorted(wanted)}")

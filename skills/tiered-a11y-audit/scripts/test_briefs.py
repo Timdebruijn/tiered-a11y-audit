@@ -73,8 +73,7 @@ def test_in_a_re_audit_each_agent_gets_the_earlier_fingerprints_of_its_own_area(
         assert "contrast-text@" not in text and "popover-off-screen@" not in text and "odd@x" not in text, "a finding of another lens is not this agent's to refile"
         assert text.index("# Findings of the earlier audit") < text.index("# Start of your findings file"), "the skeleton stays the last thing an expert reads"
         assert "- `no-a11y-lint@package.json`: No lint" in brief(ws / "briefs", "framework-maximizer")
-        assert "- `popover-off-screen@header`: Menu off screen" in brief(ws / "briefs", "low-vision-user")
-        assert "# Findings of the earlier audit" not in brief(ws / "briefs", "deaf-user"), "an agent with nothing earlier gets no empty section"
+        assert "# Findings of the earlier audit" not in brief(ws / "briefs", "low-vision-user"), "a persona walks before it reads any finding"
         owner_of_title = [n for n in json.loads((ws / "briefs" / "_agents.json").read_text())["experts"] if "no-title@index.html" in brief(ws / "briefs", n)]
         assert len(owner_of_title) == 1, owner_of_title
     r, briefs = build()

@@ -83,14 +83,14 @@ def merged_is_current(ws: Path, gaps: list):
     merged = load(mp, gaps)
     if merged is None:
         return None
-    inputs = [p for p in (ws / "findings").glob("*.json") if p.name == "_dedupe.json" or not p.name.startswith("_")]
+    inputs = [p for p in (ws / "findings").glob("*.json") if p.name in ("_dedupe.json", "_delta-map.json") or not p.name.startswith("_")]
     stale = sorted(p.name for p in inputs + list((ws / "personas").glob("*.md")) if older(mp, p))
     if stale:
         gaps.append(f"findings/_merged.json is older than {', '.join(stale)}: run merge_findings.py again")
     problems = merged.get("problems") or []
     if problems:
         # what the merge settled itself is under "notes"; this list is only what needs a decision
-        todo = "Correct the claim where it was made (a findings file, a persona report, _dedupe.json) or drop the finding, then merge again"
+        todo = "Correct the claim where it was made (a findings file, a persona report, _dedupe.json, _delta-map.json) or drop the finding, then merge again"
         if any("not found in the repository" in str(p) for p in problems):
             todo += "; if the cited files do exist, the audit scope is a subdirectory and the merge needs --repo <dir>"
         gaps.append(f"the merge lists {len(problems)} problem{'s' if len(problems) > 1 else ''} to resolve (findings/_merged.md, at the end), "

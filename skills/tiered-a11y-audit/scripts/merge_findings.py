@@ -686,7 +686,17 @@ def main():
                 return str(fp).strip().lower()
             earlier = {key(f["fingerprint"]): f for f in prev["findings"] if f.get("fingerprint")}
             was = prev.get("delta") if isinstance(prev.get("delta"), dict) else {}
-            was_resolved, was_unreported = ({key(fp) for fp in was.get(k) or []} for k in ("resolved", "not_reported"))
+            was_resolved, was_unreported = ({key(fp) for fp in (was.get(k) if isinstance(was.get(k), list) else [])} for k in ("resolved", "not_reported"))
+            if "not_reported" not in was:       # a delta from before that list existed: its "resolved" only meant "not filed again"
+                was_resolved, was_unchecked = set(), was_resolved
+            else:
+                was_unchecked = set()
+            # What the earlier audit already did not see again is still not seen until it is matched, found or checked:
+            # it stays on the list, with the title that audit kept for it.
+            titles = was.get("earlier") if isinstance(was.get("earlier"), dict) else {}
+            for fp in sorted(was_unreported - set(earlier)):
+                kept = titles.get(fp) if isinstance(titles.get(fp), dict) else {}
+                earlier[fp] = {"fingerprint": fp, "id": kept.get("id"), "title": kept.get("title")}
             cur = {key(f["fingerprint"]): f for f in merged}
             same, fixed = {}, set()         # earlier fingerprint -> the finding of this run it is; the ones checked to be fixed
             raw_map = read_json(fdir / "_delta-map.json") if (fdir / "_delta-map.json").exists() else {}
@@ -701,11 +711,13 @@ def main():
                     problems.append(f"_delta-map.json: {old!r} is called resolved, but {cur[key(old)]['id']} of this run has that fingerprint")
                 elif key(target) == "resolved":
                     fixed.add(key(old))
+                elif key(old) in cur:
+                    problems.append(f"_delta-map.json: {old!r} needs no entry, {cur[key(old)]['id']} of this run has that fingerprint; take it out")
                 elif hit is None:
                     problems.append(f"_delta-map.json: {old!r} points at {target!r}, which is neither a finding of this run nor \"resolved\"")
                 else:
                     same[key(old)] = hit
-            open_now = {fp for fp in cur if fp in earlier or fp in was_unreported} | {key(f["fingerprint"]) for f in same.values()}
+            open_now = {fp for fp in cur if fp in earlier or fp in was_unchecked} | {key(f["fingerprint"]) for f in same.values()}
             regressed = sorted(fp for fp in cur if fp in was_resolved and fp not in open_now)
             still_open = sorted(open_now)
             new = sorted(fp for fp in cur if fp not in open_now and fp not in regressed)
@@ -724,8 +736,9 @@ def main():
                 except (AttributeError, TypeError):
                     return fp.split("@", 1)[-1].split(":")[0]
 
-            def criteria(f):
-                return {w.get("sc") for w in f.get("wcag") or [] if isinstance(w, dict)} - {None}
+            def criteria(f):        # of a finding that may come from any earlier version, so of any shape
+                cited = f.get("wcag") if isinstance(f.get("wcag"), list) else []
+                return {w["sc"] for w in cited if isinstance(w, dict) and isinstance(w.get("sc"), str)}
 
             def words(fp):
                 return set(re.split(r"[^a-z0-9]+", fp.split("@")[0])) - {"", "no", "not", "missing", "without", "the", "a", "of", "and", "for", "in", "on"}
@@ -743,7 +756,9 @@ def main():
 
             def line(f, fp):
                 return f"- {f.get('id')} · {f.get('title')} · `{fp}`"
-            was_called = {v: k for k, v in delta["matched"].items()}
+            was_called = defaultdict(list)     # two earlier findings may have become one
+            for old_fp, fp in delta["matched"].items():
+                was_called[fp].append(old_fp)
             dl = ["# Re-audit delta", "",
                   f"resolved: {len(resolved)} · not reported again: {len(not_reported)} · still open: {len(still_open)} · regressed: {len(regressed)} · new: {len(new)}", "",
                   f"## Not reported again ({len(not_reported)})", ""]
@@ -752,13 +767,15 @@ def main():
                        "Decide each one and write it in `findings/_delta-map.json`, an object with the earlier fingerprint as key, then merge again:", "",
                        "- the same problem as a finding of this run: the value is that finding's ID or fingerprint;",
                        "- checked in the code and gone: the value is `\"resolved\"`;",
-                       "- neither: leave it out, and it stays in this list and is reported as not reported again.", ""]
+                       "- neither: leave it out, and it stays in this list and is reported as not reported again.", "",
+                       "A line starting with \"may be\" is a finding of this run that shares two of criterion, file and a word of the slug with the entry "
+                       "above it. Most entries have none; then look yourself. The merge checks the map: an entry that does not hold comes back as a problem to resolve.", ""]
             for fp in not_reported:
                 dl.append(line(earlier[fp], fp))
                 dl += [f"  - may be {cur[c].get('id')} · {cur[c].get('title')} · `{c}` ({', '.join(why)})" for _, c, why in candidates(fp)]
             dl += ["", f"## Resolved ({len(resolved)})", "", "Called resolved in `_delta-map.json`.", ""] + [line(earlier[fp], fp) for fp in resolved]
             dl += ["", f"## Regressed ({len(regressed)})", ""] + [line(cur[fp], fp) for fp in regressed]
-            dl += ["", f"## Still open ({len(still_open)})", ""] + [line(cur[fp], fp) + (f" (earlier `{was_called[fp]}`)" if fp in was_called else "") for fp in still_open]
+            dl += ["", f"## Still open ({len(still_open)})", ""] + [line(cur[fp], fp) + (" (earlier " + ", ".join(f"`{o}`" for o in was_called[fp]) + ")" if fp in was_called else "") for fp in still_open]
             dl += ["", f"## New ({len(new)})", ""] + [line(cur[fp], fp) for fp in new] + [""]
             (ws / "delta.md").write_text("\n".join(dl), encoding="utf-8")
             print(f"delta: resolved {len(resolved)}, not reported again {len(not_reported)}, still open {len(still_open)}, regressed {len(regressed)}, new {len(new)}")

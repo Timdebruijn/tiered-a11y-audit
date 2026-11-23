@@ -357,9 +357,48 @@ def test_a_map_that_does_not_hold_is_a_problem_in_every_file():
 def test_what_came_back_is_named_for_what_it_was():
     with tempfile.TemporaryDirectory() as d:
         ws = claims_workspace(d, [finding("KBD-001", fingerprint="keyboard-inoperable@src/page.html"), finding("SEM-001", fingerprint="missing-h1@src/page.html")])
-        # the earlier audit called one resolved, and did not see the other again without checking it
+        # the earlier audit called one resolved after a check, and did not see the other again
         delta, _, _ = reaudit(ws, {"findings": [], "delta": {"resolved": ["keyboard-inoperable@src/page.html"], "not_reported": ["missing-h1@src/page.html"]}})
         assert delta["regressed"] == ["keyboard-inoperable@src/page.html"] and delta["still_open"] == ["missing-h1@src/page.html"] and delta["new"] == [], delta
+        # a delta from before "not reported again" existed: its "resolved" was never a check, so what is back did not regress
+        delta, _, _ = reaudit(ws, {"findings": [], "delta": {"resolved": ["keyboard-inoperable@src/page.html"]}})
+        assert delta["regressed"] == [] and delta["still_open"] == ["keyboard-inoperable@src/page.html"] and delta["new"] == ["missing-h1@src/page.html"], delta
+
+
+def test_what_was_not_seen_twice_stays_on_the_list_with_its_title():
+    with tempfile.TemporaryDirectory() as d:
+        ws = claims_workspace(d, [finding("KBD-001", fingerprint="keyboard-inoperable@src/page.html")])
+        prev = {"findings": [{"id": "KBD-004", "title": "Menu needs a mouse", "fingerprint": "keyboard-inoperable@src/page.html"}],
+                "delta": {"resolved": [], "not_reported": ["no-status-message@src/toast.js"],
+                          "earlier": {"no-status-message@src/toast.js": {"id": "DYN-003", "title": "Toast is not announced"}}}}
+        delta, _, md = reaudit(ws, prev)
+        assert delta["not_reported"] == ["no-status-message@src/toast.js"], delta
+        assert delta["earlier"]["no-status-message@src/toast.js"]["title"] == "Toast is not announced" and "Toast is not announced" in md
+        delta, merged, _ = reaudit(ws, prev, {"no-status-message@src/toast.js": "resolved"})        # and it can be settled like any other
+        assert delta["resolved"] == ["no-status-message@src/toast.js"] and delta["not_reported"] == [] and not merged["problems"], (delta, merged["problems"])
+
+
+def test_the_map_takes_two_earlier_findings_into_one_and_refuses_an_entry_for_what_matched_already():
+    with tempfile.TemporaryDirectory() as d:
+        ws = claims_workspace(d, [finding("KBD-001", fingerprint="keyboard-inoperable@src/page.html"), finding("SEM-001", fingerprint="missing-h1@src/page.html")])
+        old = [{"id": "KBD-004", "title": "Menu needs a mouse", "fingerprint": "keyboard-inoperable@src/page.html"},
+               {"id": "SEM-002", "title": "No heading on Alerts", "fingerprint": "missing-heading@src/alerts.html"},
+               {"id": "SEM-003", "title": "No heading on Agents", "fingerprint": "missing-heading@src/agents.html"}]
+        delta, merged, md = reaudit(ws, old, {"missing-heading@src/alerts.html": "SEM-001", " Missing-Heading@src/agents.html ": "SEM-001"})
+        assert delta["not_reported"] == [] and not merged["problems"], (delta, merged["problems"])
+        assert "(earlier `missing-heading@src/agents.html`, `missing-heading@src/alerts.html`)" in md, md
+        delta, merged, _ = reaudit(ws, old, {"keyboard-inoperable@src/page.html": "SEM-001"})
+        assert any("needs no entry, KBD-001 of this run has that fingerprint" in p for p in merged["problems"]), merged["problems"]
+        assert delta["matched"] == {}, delta
+
+
+def test_an_earlier_audit_of_any_shape_does_not_stop_the_merge():
+    with tempfile.TemporaryDirectory() as d:
+        ws = claims_workspace(d, [finding("KBD-001", fingerprint="keyboard-inoperable@src/page.html")])
+        odd = [{"id": "A", "fingerprint": "a@x", "wcag": 5}, {"id": "B", "fingerprint": "b@x", "wcag": [{"sc": ["1"]}]},
+               {"id": "C", "fingerprint": "c@x", "wcag": ["1.1.1"], "evidence": "somewhere"}, "a string", {"id": "D"}, {"id": "E", "fingerprint": 7}]
+        delta, merged, _ = reaudit(ws, {"findings": odd, "delta": {"resolved": 5, "not_reported": "x", "earlier": []}})
+        assert delta["not_reported"] == ["7", "a@x", "b@x", "c@x"] and delta["new"] == ["keyboard-inoperable@src/page.html"], delta
 
 
 def test_a_personas_criterion_is_settled_and_an_experts_is_asked_about():
