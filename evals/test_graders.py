@@ -169,7 +169,7 @@ def audit(case: Path, findings, personas=("screen-reader", "low-vision", "motor-
     (ws / "findings" / "orchestrator.json").write_text(json.dumps({"agent": "orchestrator", "findings": findings}), encoding="utf-8")
     for p in personas:
         (ws / "personas" / f"{p}-user.md").write_text(f"# {p}\n\n## Flow results\n| Flow | Result | Feel | Main obstacle |\n|---|---|---|---|\n"
-                                                      "| Contact | failed | slow | none |\n", encoding="utf-8")
+                                                      "| Contact | completed with difficulty | slow | none |\n", encoding="utf-8")
 
     def run(name, *args):
         r = subprocess.run([sys.executable, str(SCRIPTS / name), str(ws), *args], capture_output=True, text=True)

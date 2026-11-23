@@ -28,6 +28,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from contrast import parse as parse_colour, ratio as contrast_ratio  # noqa: E402
+from labels import flow_result  # noqa: E402
 
 SEVERITY_ORDER = {"blocker": 0, "critical": 1, "serious": 2, "moderate": 3, "minor": 4}
 TIER_FROM_IMPACT = {"none": 1, "keyboard-only": 1, "preference-only": 1, "subtle": 2, "significant": 3}
@@ -365,16 +366,23 @@ def parse_personas(pdir: Path, problems: Log):
                 elif "cited" in h or "cites" in h: section = "cited"
                 elif "disputed" in h: section = "disputed"
                 elif "new findings" in h: section = "new"
-                elif "flow results" in h: section = "flows"
+                elif "flow results" in h: section, rows_seen = "flows", 0
                 else: section = None
                 continue
             if section == "new":
                 buf.append(line); continue
             if section == "flows" and line.startswith("|"):
+                rows_seen += 1
                 cells = [c.strip() for c in line.strip("|").split("|")]
-                if len(cells) >= 2 and re.search(r"\bfailed\b|only with help", cells[1], re.I):
+                if rows_seen <= 2 or len(cells) < 2:    # the header row and the rule under it
+                    continue
+                kind = flow_result(cells[1])
+                if kind in ("failed", "help"):
                     ids = re.findall(r"\b[A-Z]{3}-\d{3}\b|\bPER-[a-z-]+-\d{3}\b", line)
-                    flow_failures.append({"persona": name, "flow": cells[0], "result": cells[1], "ids": ids})
+                    flow_failures.append({"persona": name, "flow": cells[0], "result": cells[1], "ids": ids, "floor": "blocker" if kind == "failed" else "critical"})
+                elif kind is None:
+                    problems.append(f"persona {name}: flow '{cells[0]}' has the result '{cells[1]}', which is none of the six scores of the persona "
+                                    f"protocol, so it cannot be told whether the flow failed; write the score in that row of personas/{p.name} as the protocol spells it")
                 continue
             if section in ("confirmed", "cited", "disputed") and line.lstrip().startswith("-"):
                 m = re.search(r"\b[A-Z]{3}-\d{3}\b", line)   # first ID on the bullet is the subject
@@ -507,6 +515,8 @@ def main():
                 for sc in g.get("wcag", []):
                     if sc not in keep.get("wcag", []):
                         keep.setdefault("wcag", []).append(sc)
+                if not str(keep.get("tier_rationale") or "").strip() and g.get("tier_rationale"):
+                    keep["tier_rationale"] = g["tier_rationale"]     # the duplicate said what changes visibly; keep its words
         merged.append(keep)
 
     # --- root-cause clusters: same file and line ranges overlapping or within PROXIMITY lines --
@@ -574,7 +584,18 @@ def main():
             id_index[fid] = f
     severity_upgrades = []
     for ff in flow_failures:
-        floor = "blocker" if re.search(r"\bfailed\b", ff["result"], re.I) else "critical"
+        floor = ff["floor"]
+        # The floor reaches a finding only through the IDs in the flow's row. A row without one that exists used to
+        # pass in silence, and the finding that stopped the persona kept the severity its expert gave it.
+        for fid in ff["ids"]:
+            if fid not in id_index:
+                problems.append(f"persona {ff['persona']}: the row of flow '{ff['flow']}' names {fid}, which is not a finding (dropped, or "
+                                f"mistyped); take it out of that row in personas/ or put the right ID there")
+        if not any(fid in id_index for fid in ff["ids"]):
+            problems.append(f"persona {ff['persona']}: flow '{ff['flow']}' is '{ff['result']}' but its row names no finding, so no severity "
+                            f"floor is applied; put the ID of the finding that stopped the persona in the last column of that row "
+                            f"in personas/, taken from its trace, or file the finding if nobody did, or correct the result if the "
+                            f"trace does not hold up")
         for fid in ff["ids"]:
             f = id_index.get(fid)
             if not f:
@@ -584,6 +605,14 @@ def main():
                 severity_upgrades.append(f"{f['id']}: {f.get('severity')} → {floor} ({ff['persona']} {ff['result']} on '{ff['flow']}')")
                 f["severity_before_persona"] = f.get("severity")
                 f["severity"] = floor
+
+    # The report gives a tier-2 finding a line on what changes visibly, except in the short blocks of minor ones. Asked
+    # for here, after the floors have set the severity, and not found at the end as a gap in the rendered report.
+    for f in merged:
+        rationale = f.get("tier_rationale")
+        if f.get("tier") == 2 and f.get("severity") != "minor" and not (isinstance(rationale, str) and rationale.strip()):
+            problems.append(f"{f['id']}: tier 2 without tier_rationale, so the report has no design impact to show; "
+                            f"say in its findings file what a sighted user will see change")
 
     merged.sort(key=lambda x: (x.get("tier") or 9, SEVERITY_ORDER.get(x.get("severity"), 9), x["id"]))
 

@@ -35,7 +35,7 @@ from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from labels import load_labels  # noqa: E402
+from labels import flow_result, load_labels  # noqa: E402
 
 SEV = {"blocker": 0, "critical": 1, "serious": 2, "moderate": 3, "minor": 4}
 EFF = {"S": 0, "M": 1, "L": 2}
@@ -55,13 +55,8 @@ def effort_total(fs, t):
 
 
 def classify_result(text, t):
-    s = text.lower()
-    if "n/a" in s or "not applicable" in s or "niet van toepassing" in s: return t["results"]["na"]
-    if "fail" in s or "mislukt" in s: return t["results"]["failed"]
-    if "help" in s or "workaround" in s or "hulp" in s: return t["results"]["help"]
-    if "difficult" in s or "moeite" in s: return t["results"]["difficulty"]
-    if "complet" in s or "voltooid" in s: return t["results"]["completed"]
-    return text.strip()
+    key = flow_result(text)
+    return t["results"][key] if key else text.strip()
 
 
 def persona_rows(pdir: Path, t):
