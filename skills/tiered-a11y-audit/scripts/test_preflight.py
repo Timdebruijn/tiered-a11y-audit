@@ -107,7 +107,7 @@ def test_a_backend_beside_the_frontend_is_named_and_the_count_is_explained():
         out = run(root).stdout
         (root / "web/App.tsx").write_text("export const App = () => <main>hi</main>\n")
         out = run(root).stdout
-        assert line(out, "Project-owned UI files") == "- Project-owned UI files: 2 (TSX 1, HTML 1); not counted: 1 scripts of logic beside the components", line(out, "Project-owned UI files")
+        assert line(out, "Project-owned UI files") == "- Project-owned UI files: 2 (HTML 1, TSX 1); not counted: 1 scripts of logic beside the components", line(out, "Project-owned UI files")
         assert "- Backend:" not in out
         (root / "go.mod").write_text("module example.test/app\n")
         out = run(root).stdout

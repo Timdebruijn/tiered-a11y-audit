@@ -534,8 +534,9 @@ def backend_note(r: dict) -> str:
 
 def made_up_of(r: dict) -> str:
     """What the count that picks the audit size is made of, and what was left out of it."""
-    counted = ", ".join(f"{k} {v}" for k, v in sorted(r["counted"].items(), key=lambda kv: -kv[1]))
-    left = ", ".join(f"{v} {k}" for k, v in sorted(r["not_counted"].items(), key=lambda kv: -kv[1]))
+    # largest first, and by name where two are as large: the order of the walk differs from one machine to the next
+    counted = ", ".join(f"{k} {v}" for k, v in sorted(r["counted"].items(), key=lambda kv: (-kv[1], kv[0])))
+    left = ", ".join(f"{v} {k}" for k, v in sorted(r["not_counted"].items(), key=lambda kv: (-kv[1], kv[0])))
     return (f" ({counted})" if counted else "") + (f"; not counted: {left}" if left else "")
 
 
