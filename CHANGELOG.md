@@ -2,6 +2,14 @@
 
 Rounds of review and real runs, newest first. Each round changed what the report says, not only how it is phrased.
 
+## Unreleased
+
+Merged after 1.2.1 and not in a release yet.
+
+### Round 16 — a re-audit of a React application, and what its orchestrator sent back (2026-11-23)
+- `extract_colors.py` keeps a token's value apart per scope (#41). Until now the last declaration won, whatever selector it stood under. On a stylesheet with opt-in reader settings on the root, such as `:root[data-contrast="high"]`, the file listed the values of those settings as the tokens, and none of its 52 failing pairs described the default theme. A declaration under `:root`, `html`, `body` or `:host` is now the base. One under a narrower selector or under a media query other than the colour scheme is a variant, listed with the value it replaces and with the failing pairs that change under it. A token that only refers to an overridden token changes with it. A token declared only inside a component keeps its first declaration as its base. Three smaller faults in the same file went with it. `light-dark()` with commas inside its arguments was split at the first comma. A shadow or gradient that contains a colour was reported as a colour that could not be resolved. And two status or brand colours of different families, such as `--good` on `--warn`, were paired as text on a surface, which was 30 of those 52 rows; they are now left out and counted. The files are walked in sorted order, so the first declaration is the same on every machine. The script has a self-check of its own, `test_colors.py`.
+- Not measured: a stylesheet where a variant and a scheme set the same token with the same specificity, where the later rule wins in a browser and the variant wins in this table. And no audit has run with the new file, so whether the visual lens reads the variants as intended is not known.
+
 ## 1.2.1 (2026-11-17)
 
 How the plugin is installed and listed; no script and no instruction changed.
