@@ -61,6 +61,8 @@ def load_labels(lang: str, ws: Path) -> dict:
     problems = check(labels, source) if isinstance(labels, dict) else ["the file is not a JSON object"]
     if problems:
         print(f"{path}: {len(problems)} problem(s), fix them and run again:\n  " + "\n  ".join(problems[:20]), file=sys.stderr)
+        if any(p.startswith("missing") for p in problems):
+            print(f"A key that is missing may be one a newer version of the skill added: copy it from {SHIPPED / 'en.json'} and translate its value.", file=sys.stderr)
         sys.exit(2)
     return labels
 

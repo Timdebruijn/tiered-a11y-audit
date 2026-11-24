@@ -15,9 +15,11 @@ script can decide them in any language:
   symbol     emoji, arrows, middle dots, rule lines, a ratio written as 4.5:1, a slash in running text
   bold       more than six words in bold
   ids        with --workspace: every ID of report-ids.json is in the report, tier 1 and 2 IDs have exactly one
-             block, and the report uses no ID that does not exist
+             block, the report uses no ID that does not exist, and outside the full list of appendix C no
+             finding is named by the ID it had in its findings file (KBD-003), which a reader cannot look up
 
-Code blocks, code spans and link targets are not text and are skipped. Not checked, because no script can tell:
+Code blocks, code spans and link targets are not text and are skipped. So is a short piece of text between
+quotation marks: that is a button label or a message quoted as the product shows it, arrow and all. Not checked, because no script can tell:
 abbreviations without their full term, all-caps words (acronyms look the same), and whether the prose is true.
 Standard library only.
 """
@@ -37,6 +39,15 @@ ID_RE = re.compile(r"\bT[123]-\d{2,}\b")
 # ponytail: a slash is taken for a path when the word has a file extension, a second slash, or a path-like start;
 # anything else ("and/or", "src/components") is reported and belongs in words or in a code span.
 PATH_RE = re.compile(r"^([./~@]|\w+://)|/.*/|\.\w{1,5}(:[\d,-]+)?$")
+# Text of the interface, quoted: at most 60 characters between two quotation marks of a kind, on one line. A mark inside
+# a word is an apostrophe (don't, foto's) and neither opens nor closes a quotation.
+# ponytail: by the marks alone, so a sentence of that length in quotation marks is skipped too; code spans stay the sure way.
+# A quotation does not run from one table cell into the next.
+QUOTED = (r"""(?<!\w)(?:"(?=\S)[^"\n|]{0,58}[^\s|]"|'(?=\S)(?:[^'\n|]|'(?=\w)){0,58}?[^\s|]'|[“„](?=\S)[^”\n|]{0,58}[^\s|]”"""
+          r"""|‘(?=\S)(?:[^’\n|]|’(?=\w)){0,58}?[^\s|]’)(?!\w)""")
+# The ID of a findings file: KBD-003, PER-low-vision-001, and PER-low-vision-x001 as the merge numbers a persona's finding
+# that came without one. Not as part of a path or a URL.
+SOURCE_ID = r"(?<![\w/-])(?:[A-Z]{3}|PER-[a-z0-9-]+?)-x?\d{3}(?![\w-]|\.\w|/)"
 
 
 def in_ranges(ch: str, ranges) -> bool:
@@ -63,7 +74,7 @@ def lint(text: str, ids: dict | None = None) -> list:
         out.append((nofence.count("\n", 0, m.start()) + 1, "unwritten",
                     f"still to write: {what[6:70].strip()}" if what.startswith("WRITE:") else "a comment is left in the report: take it out of report-prose.md and render again (in a report made by hand: delete it)"))
     structure = blank_out(nofence, r"<!--.*?-->", re.S)
-    prose = blank_out(blank_out(blank_out(structure, r"`[^`\n]*`"), r"\]\([^)\n]*\)"), r"\w+://\S+")
+    prose = blank_out(blank_out(blank_out(blank_out(structure, r"`[^`\n]*`"), r"\]\([^)\n]*\)"), r"\w+://\S+"), QUOTED)
     lines, plines = structure.split("\n"), prose.split("\n")
 
     last_level, seen_table, i = 0, False, 0
@@ -135,6 +146,20 @@ def lint(text: str, ids: dict | None = None) -> list:
                 out.append((0, "ids", f"{rid} has {blocks} finding blocks: exactly one, with the heading \"{rid}. <title>\""))
         for rid in sorted(used - set(ids)):
             out.append((0, "ids", f"{rid} is used in the report but is not in report-ids.json"))
+        # The ID a finding had in its findings file means nothing to a reader. The renderer replaces the ones it knows, so
+        # what is left is in the orchestrator's own text, or names a finding that is not in the report. Only the shapes
+        # this audit uses are looked for, so that SHA-256 in a sentence is not taken for a finding.
+        sources = {s: rid for rid, meta in ids.items() for s in meta.get("source") or []}
+        stems = {s.rsplit("-", 1)[0] for s in sources}
+        for n, line in enumerate(structure.split("\n"), 1):
+            row = cells(line) if line.startswith("|") else []
+            if len(row) > 1 and ID_RE.fullmatch(row[0]) and all(s in sources for s in row[1].split(", ")):
+                continue                                        # a row of appendix C: a report ID and its source IDs, which belong there
+            for s in sorted(set(re.findall(SOURCE_ID, line))):
+                if s in sources:
+                    out.append((n, "ids", f"{s} is the ID of a findings file: the report calls this finding {sources[s]}"))
+                elif s.rsplit("-", 1)[0] in stems:
+                    out.append((n, "ids", f"{s} is the ID of a findings file and no finding of this report has it: describe what is meant, or leave it out"))
     return sorted(out)
 
 

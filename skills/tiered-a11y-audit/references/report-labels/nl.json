@@ -87,7 +87,8 @@
   "line": "regel {a}",
   "instances": "{n} keer",
   "selector": "selector",
-  "to1": "{r} op 1",
+  "to1": "{r} tot 1",
+  "decimal": ",",
   "and_then": "{a}, daarna {b}",
   "before": "voor",
   "after": "na",
@@ -136,6 +137,20 @@
     "d": "D. Juridische context"
   },
   "method": "{agent}: {method}; {n} bestanden of flows onderzocht; niet onderzocht: {skipped}.",
+  "lens": {
+    "semantics-structure": "semantiek en structuur",
+    "keyboard-focus": "toetsenbord en focus",
+    "visual-perception": "visuele waarneming",
+    "forms-input": "formulieren en invoer",
+    "dynamic-content": "dynamische inhoud",
+    "content-media": "inhoud en media",
+    "framework-maximizer": "framework en tooling"
+  },
+  "method_word": {
+    "static": "gelezen in de code",
+    "runtime": "geprobeerd in de draaiende applicatie",
+    "both": "gelezen in de code en geprobeerd in de draaiende applicatie"
+  },
   "voice_p": "De persona's hieronder zijn simulaties door een AI, geen echte gebruikers. Deze zijn doorlopen: {names}.",
   "no_advice": "Er is geen enkele wijziging gevonden die meerdere bevindingen tegelijk oplost.",
   "nothing": "Niets in deze categorie.",

@@ -22,12 +22,13 @@ from lint_report import lint  # noqa: E402
 
 
 def finding(fid, **over):
-    f = {"id": fid, "fingerprint": f"{fid.lower()}@src/page.html", "title": f"Title of {fid}", "description": f"Problem text of {fid}.",
+    tag = fid.lower()            # not the ID itself: an ID in the text of a finding becomes the ID of the report
+    f = {"id": fid, "fingerprint": f"{tag}@src/page.html", "title": f"Title of {tag}", "description": f"Problem text of {tag}.",
          "severity": "serious", "evidence": [{"file": "src/page.html", "lines": "2-3", "snippet": "<div onclick>"}],
          "wcag": [{"sc": "2.1.1"}], "affected_users": ["screen-reader"], "visual_impact": "none", "proposed_tier": 1,
-         "fix": {"ownership": "project", "summary": f"Fix text of {fid}.", "location": "src/page.html",
+         "fix": {"ownership": "project", "summary": f"Fix text of {tag}.", "location": "src/page.html",
                  "code_before": f"<before-{fid}>", "code_after": f"<after-{fid}>", "side_effects": "Check the styles."},
-         "effort": "S", "confidence": "high", "verify": f"Verify text of {fid}."}
+         "effort": "S", "confidence": "high", "verify": f"Verify text of {tag}."}
     f.update(over)
     return f
 
@@ -81,7 +82,7 @@ def test_every_finding_has_one_block_with_its_own_values():
     assert r.returncode == 0, r.stderr
     assert len(ids) == len(FINDINGS)
     for rid, meta in ids.items():
-        src = meta["source"][0]
+        src = meta["source"][0].lower()
         if meta["tier"] == 3:                       # tier 3 is a list the orchestrator sorts into five blocks
             assert f"- {rid}: Title of {src}" in draft, f"{rid} missing from the tier 3 list"
             continue
@@ -125,7 +126,7 @@ def test_a_tier_without_findings_says_none_instead_of_a_symbol():
 def test_a_contrast_with_a_colon_is_put_into_words_and_code_is_left_alone():
     f = finding("KBD-009", title="Grey text at 2.81:1", description="The ratio is 2.81:1 where 4.5:1 is needed; see `ratio(4.5:1)` and file.css:12:1.",
                 verify="Measure 4,5:1 or better.")
-    for lang, to in (("en", "to"), ("nl", "op")):
+    for lang, to in (("en", "to"), ("nl", "tot")):
         _, draft, ids = run([f], lang)
         assert f"Grey text at 2.81 {to} 1" in draft and f"The ratio is 2.81 {to} 1 where 4.5 {to} 1 is needed" in draft, f"{lang}: ratio left with a colon"
         assert f"Measure 4,5 {to} 1 or better." in draft, f"{lang}: a decimal comma is a ratio too"
@@ -148,9 +149,16 @@ def test_the_flow_table_of_a_persona_is_read_by_position_not_by_english_words():
     persona = ("# Schermlezer\n\n## Flow results\n| Taak | Resultaat | Gevoel | Obstakel |\n|---|---|---|---|\n"
                "| Flow bestellen | failed | traag | Knop zonder naam |\n| Contact | completed | vlot | geen |\n\n## In my own words\nTekst.\n")
     _, draft, _ = run(FINDINGS, "nl", personas={"screen-reader-user": persona})
-    assert "| Taak | screen-reader |" not in draft, "the translated header row became a result row"
-    assert "| Flow bestellen | screen-reader | mislukt | Knop zonder naam |" in draft, "a flow whose name starts with Flow was dropped"
-    assert "| Contact | screen-reader | voltooid | geen |" in draft
+    assert "| Taak | Schermlezer |" not in draft, "the translated header row became a result row"
+    assert "| Flow bestellen | Schermlezer | mislukt | Knop zonder naam |" in draft, "a flow whose name starts with Flow was dropped"
+    assert "| Contact | Schermlezer | voltooid | geen |" in draft
+
+
+def test_the_flow_table_names_a_persona_as_the_report_does_below_it():
+    named = PERSONA.replace("# Screen reader user", "# Sanne \u2014 schermlezergebruiker, blind, expert")
+    _, draft, _ = run(FINDINGS, "nl", personas={"screen-reader-user": named, "low-vision-user": PERSONA.split("\n", 1)[1]})
+    assert "| Contact | Sanne | mislukt |" in draft and "### Sanne, schermlezergebruiker, blind, expert" in draft, "table and heading name the persona differently"
+    assert "| Contact | low-vision | mislukt |" in draft, "a persona file without a title lost its rows or its name"
 
 
 PERSONA = ("# Screen reader user\n\n## Flow results\n| Flow | Result | Feel | Main obstacle |\n|---|---|---|---|\n"
@@ -182,7 +190,7 @@ def test_the_report_is_assembled_from_the_prose_file_and_never_edited_by_hand():
     assert "<!--" not in report, "a comment or an unfilled gap reached the report"
     for k, v in texts.items():
         assert v in report, f"the text for {k} is not in the report"
-    assert "- One main landmark." not in report and "Title of CNT-001 (serious; small)" not in report, "the list to choose from was kept next to the choice"
+    assert "- One main landmark." not in report and "Title of cnt-001 (serious; small)" not in report, "the list to choose from was kept next to the choice"
     assert "Legal context" not in report, "an optional block without text kept its heading"
     for rid, meta in ids.items():
         if meta["tier"] != 3:
@@ -199,19 +207,62 @@ def test_the_report_is_assembled_from_the_prose_file_and_never_edited_by_hand():
     assert "### D. Legal context\n\nThe public sector rules apply." in report
 
 
-def test_the_prose_file_is_only_ever_added_to():
+def test_written_prose_is_kept_and_sections_that_are_new_are_added():
     run(FINDINGS, "en", personas={"screen-reader-user": PERSONA})
     ws = LAST_WS
-    write_prose(ws, {"in-short": "My own words, which took an hour."})
+    mine = "My own words, which took an hour.\n\n<!-- my own note, further down -->\n\n```\n=== not a key, it is indented\n```\n   A last line."
+    write_prose(ws, {"in-short": mine.replace("=== not", " === not"), "summary": "<!-- my own note, above my text -->\nThe summary.",
+                     "method": "<!-- a note and no text yet -->"})
     (ws / "personas" / "low-vision-user.md").write_text(PERSONA.replace("Screen reader", "Low vision"), encoding="utf-8")
     r, _, _ = run(None, "en", ws)
+    assert r.returncode == 0, r.stderr
     text = (ws / "report-prose.md").read_text(encoding="utf-8")
-    assert text.startswith("<!-- a hint that must not reach the report -->") and "My own words, which took an hour." in text, "written prose was overwritten"
-    assert text.count("=== in-short ===") == 1 and "=== persona-low-vision-user ===" in text and "=== summary ===" in text, "missing sections were not added"
+    assert text.startswith("<!-- a hint that must not reach the report -->"), "what stood above the first section was replaced"
+    assert mine.replace("=== not", " === not") in text, "written prose was changed"
+    assert "<!-- my own note, above my text -->\nThe summary." in text and "<!-- a note and no text yet -->" in text, "a comment of the orchestrator's own was taken for the hint"
+    assert "The hint of in-short, summary is not the one" in r.stdout, "a section with a note and no text is called out of date, or one with text is not: " + r.stdout
+    assert text.count("=== in-short ===") == 1 and "=== persona-low-vision-user ===" in text and "=== top5-closing ===" in text, "missing sections were not added"
     assert "new sections were added" in r.stdout
+    keys = re.findall(r"(?m)^=== (.+) ===$", text)
+    assert keys.index("persona-low-vision-user") < keys.index("persona-screen-reader-user") < keys.index("method"), "sections are not in the order of the report"
     before = text
     run(None, "en", ws)
     assert (ws / "report-prose.md").read_text(encoding="utf-8") == before, "a run with nothing new changed the prose file"
+
+
+def test_a_prose_file_that_is_not_utf8_is_left_as_it_is():
+    run(FINDINGS, "en")
+    ws = LAST_WS
+    raw = b"=== in-short ===\n<!-- an old hint -->\nCaf\xe9 voor iedereen.\n"
+    (ws / "report-prose.md").write_bytes(raw)
+    r, _, _ = run(None, "en", ws)
+    assert (ws / "report-prose.md").read_bytes() == raw, "a letter that could not be read was written back as a replacement sign"
+    assert "not saved as UTF-8" in r.stderr, r.stderr
+
+
+def test_a_hint_is_written_again_when_the_findings_behind_it_change():
+    run([FINDINGS[0]], "en")                               # nothing in tier 3 yet
+    ws = LAST_WS
+    prose_file = ws / "report-prose.md"
+    first = prose_file.read_text(encoding="utf-8")
+    assert "no finding landed in this tier" in first
+    text = first
+    hint_end = text.index("-->", text.index("=== tier3 ===")) + 3
+    prose_file.write_text(text[:hint_end] + "\n- Test with people who use a screen reader.\n" + text[hint_end:], encoding="utf-8")
+    (ws / "findings" / "experts.json").write_text(json.dumps({"agent": "experts", "findings": [FINDINGS[0], FINDINGS[5]]}), encoding="utf-8")
+    m = subprocess.run([sys.executable, str(HERE / "merge_findings.py"), str(ws), "--ownership", str(OWNERSHIP)], capture_output=True, text=True)
+    assert m.returncode == 0, m.stderr
+    r, _, _ = run(None, "en", ws)
+    assert r.returncode == 0, r.stderr
+    text = prose_file.read_text(encoding="utf-8")
+    section = text.split("=== tier3 ===")[1].split("\n=== ")[0]
+    assert "no finding landed in this tier" not in text, "the hint still describes the findings of the run before"
+    assert "=== works-well ===" not in text, "an empty section for a gap that is gone (the positives) was kept, and would be refused"
+    assert "sort the items into five H3 blocks" in section and "- T3-01: Title of cnt-001" in section, section
+    assert section.rstrip().endswith("- Test with people who use a screen reader."), "the text under the hint was lost or moved"
+    assert "The hint of tier3 is not the one its text was written under" in r.stdout, r.stdout
+    r, _, _ = run(None, "en", ws)
+    assert "is not the one its text was written under" not in r.stdout, "a hint that did not change again is still called changed"
 
 
 def test_a_prose_file_that_would_put_the_wrong_text_in_the_report_is_refused():
@@ -224,8 +275,10 @@ def test_a_prose_file_that_would_put_the_wrong_text_in_the_report_is_refused():
     for label, texts, word in (("a line of prose that looks like a marker", {"in-short": "Start.\n=== note ===\nThe rest, which would vanish."}, "note"),
                                ("a key with a typo", {"in-short": "Fine.", "sumary": "Lost."}, "sumary")):
         write_prose(ws, texts)
+        as_written = (ws / "report-prose.md").read_text(encoding="utf-8")
         r, _, _ = run(None, "en", ws)
         assert r.returncode != 0 and word in r.stderr and "REPORT.md was not written" in r.stderr, f"{label}: {r.returncode} {r.stderr}"
+        assert (ws / "report-prose.md").read_text(encoding="utf-8") == as_written, f"{label}: a prose file that was refused was written again all the same"
         assert (ws / "REPORT.md").read_text(encoding="utf-8") == first, f"{label}: a report was written anyway"
     (ws / "report-prose.md").write_text("=== summary ===\nThe real one.\n\n=== summary ===\n\n", encoding="utf-8")
     r, _, _ = run(None, "en", ws)
@@ -250,7 +303,7 @@ def test_new_sections_land_on_their_own_line_and_odd_persona_names_get_a_usable_
     for _ in range(3):
         run(None, "en", ws)
     text = (ws / "report-prose.md").read_text(encoding="utf-8")
-    assert "No newline after this\n=== summary ===" in text, "a new section was glued to the last line of the text before it"
+    assert "No newline after this\n\n=== summary ===" in text, "a new section was glued to the last line of the text before it"
     assert text.count("=== summary ===") == 1 and text.count("=== persona-low-vision-user ===") == 1, "sections were added again on a later run"
     assert "No newline after this\n" in (ws / "REPORT.md").read_text(encoding="utf-8") and "===" not in (ws / "REPORT.md").read_text(encoding="utf-8")
 
@@ -273,7 +326,7 @@ def test_a_re_audit_lists_what_nobody_filed_again_apart_from_what_is_resolved_an
     prev.mkdir(parents=True)
     prev.joinpath("_merged.json").write_text(json.dumps([
         {"id": "KBD-004", "title": "Menu needs a mouse", "fingerprint": "kbd-001@src/page.html"},
-        {"id": "SEM-002", "title": "No main heading", "fingerprint": "missing-heading@src/page.html"},
+        {"id": "SEM-002", "title": "No main heading, like KBD-001 then", "fingerprint": "missing-heading@src/page.html"},
         {"id": "DYN-003", "title": "Toast is not announced", "fingerprint": "no-status-message@src/toast.js"}]), encoding="utf-8")
     (ws / "findings" / "_delta-map.json").write_text(json.dumps({"no-status-message@src/toast.js": "resolved"}), encoding="utf-8")
     m = subprocess.run([sys.executable, str(HERE / "merge_findings.py"), str(ws), "--ownership", str(OWNERSHIP), "--previous", str(prev.parent)], capture_output=True, text=True)
@@ -286,9 +339,56 @@ def test_a_re_audit_lists_what_nobody_filed_again_apart_from_what_is_resolved_an
         resolved = draft.split(heads[0])[1].split("###")[0]
         unreported = draft.split(heads[1])[1].split("###")[0]
         assert "- Toast is not announced" in resolved and "No main heading" not in resolved, resolved
-        assert "- No main heading" in unreported, unreported
+        assert "- No main heading, like KBD-001 then" in unreported, "an ID of the earlier audit was given to a finding of this one: " + unreported
         assert "missing-heading@" not in draft and "no-status-message@" not in draft, "a fingerprint is not a line a reader can use"
-        assert "- T1-01: Title of KBD-001" in draft.split(heads[2])[1].split("###")[0]
+        assert "- T1-01: Title of kbd-001" in draft.split(heads[2])[1].split("###")[0]
+
+
+def test_a_cell_is_never_cut_inside_a_code_span():
+    from render_report_parts import clip
+    assert clip("see `src/app/page.tsx` there", 12) == "see `src/app`", "a span cut open was not closed"
+    assert clip("see `src/app/page.tsx` there", 5) == "see", "a span cut right after its opening leaves a lone backtick"
+    assert clip("see `a` and `b`", 9) == "see `a` a" and clip("short", 80) == "short"
+    long_title = "The table of all targets and their history, in the component `web/src/views/targets/TargetHistoryTable.tsx`, has no headers"
+    lever = finding("FWK-001", kind="leverage", leverage={"finding_ids": ["KBD-001", "KBD-002"], "note": "One place: `ApplicationShellWithSidebar` renders every page, so one landmark there reaches all of them at once.",
+                                                         "location": "the shared layout in `web/src/components/layout/ApplicationShellWithSidebar.tsx`, once"})
+    _, draft, ids = run([finding("KBD-001", title=long_title), finding("KBD-002"), lever])
+    rows = [l for l in draft.splitlines() if l.startswith("|")]
+    assert sum("`" in l for l in rows) >= 2, "the title and the place of the lever are both cut inside a code span, or this checks nothing"
+    assert all(l.count("`") % 2 == 0 for l in rows), [l for l in rows if l.count("`") % 2]
+    assert {rule for _, rule, _ in lint(draft, ids)} == {"unwritten"}, lint(draft, ids)
+
+
+def test_a_finding_is_named_by_the_id_the_report_gives_it():
+    persona = PERSONA.replace("| KBD-001 |", "| Stuck, see PER-screen-reader-001 and KBD-002 |").replace("1. The button.", "1. The button of PER-screen-reader-001.")
+    cov = {"lenses": ["keyboard-focus"], "sc_coverage": {"2.1.2": {"status": "pass", "note": "Other than KBD-002."}}}
+    fs = [finding("KBD-001", description="The same cause as `KBD-002` and PER-screen-reader-001, unlike KBD-0021 and XKBD-002.", verify="Fix KBD-002 first.",
+                  fix={"ownership": "project", "summary": "See docs/KBD-002.md, KBD-002.png, https://example.org/KBD-002 and KBD-002.", "location": "docs/KBD-002.md"}),
+          finding("KBD-002", severity="moderate"), finding("PER-screen-reader-001", severity="minor")]
+    _, draft, ids = run(fs, personas={"screen-reader-user": persona}, extra=cov)
+    rid = {m["source"][0]: r for r, m in ids.items()}
+    a, b, per = rid["KBD-001"], rid["KBD-002"], rid["PER-screen-reader-001"]
+    block = block_of(draft, a)
+    assert f"The same cause as `{b}` and {per}, unlike KBD-0021 and XKBD-002." in block and f"Fix {b} first." in block, block
+    assert f"See docs/KBD-002.md, KBD-002.png, https://example.org/KBD-002 and {b}. (at docs/KBD-002.md)" in block, "a file name or an address was rewritten"
+    assert f"| Stuck, see {per} and {b} |" in draft, "the flow table names a finding by an ID the reader cannot look up"
+    assert f"The button of {per}." in draft and f"Other than {b}." in draft, "a persona hint or a coverage note kept the ID of the findings file"
+    assert f"| {a} | KBD-001 |" in draft and f"| {per} | PER-screen-reader-001 |" in draft, "appendix C lost the IDs it is there to list"
+    assert not [m for _, rule, m in lint(draft, ids) if rule == "ids"], lint(draft, ids)
+
+
+def test_dutch_writes_its_numbers_and_its_agents_in_dutch():
+    _, draft, _ = run(FINDINGS, "nl")
+    ws = LAST_WS
+    assert "2,81 tot 1, daarna 4,54 tot 1" in draft and "is 0,06 (" in draft, "a number printed by the script kept its decimal point"
+    (ws / "findings" / "keyboard-focus.json").write_text(json.dumps({"agent": "keyboard-focus", "findings": [],
+                                                                     "coverage": {"method": "both", "examined": ["a", "b"], "not_examined": []}}), encoding="utf-8")
+    (ws / "findings" / "my-own-lens.json").write_text(json.dumps({"agent": "my-own-lens", "findings": [], "coverage": {"method": "by ear", "examined": ["a"]}}), encoding="utf-8")
+    (ws / "findings" / "odd.json").write_text(json.dumps({"agent": "odd", "findings": [], "coverage": {"method": ["static", "runtime"], "examined": []}}), encoding="utf-8")
+    r, draft, _ = run(None, "nl", ws)
+    assert r.returncode == 0 and "- odd: ['static', 'runtime'];" in draft, "a method that is no word of the schema stopped the report: " + r.stderr[-300:]
+    assert "- toetsenbord en focus: gelezen in de code en geprobeerd in de draaiende applicatie; 2 bestanden of flows onderzocht" in draft, draft.split("### A.")[1][:600]
+    assert "- my-own-lens: by ear; 1 bestanden" in draft, "an agent or a method the labels do not know was dropped"
 
 
 def test_dutch_uses_one_word_per_severity():
