@@ -782,6 +782,17 @@ def main():
 
     # --- write outputs --------------------------------------------------------------------
     cross_notes = [dict(n, agent=ag) for ag, d in agents.items() for n in (d.get("cross_lens_notes") or []) if isinstance(n, dict)]
+    # Lenses run side by side, so the owner a note points at never reads it. A note counts as filed when some
+    # finding cites its criterion in its file; what is left is nobody's until the orchestrator looks.
+    # An accepted exception is no filing: it says a tool's hit is left as it is, not that someone looked at the note.
+    # ponytail: the same file, not the same lines, so a second problem under one criterion in one file hides behind
+    # the first; and only the first path of a location that names two files is looked at
+    for n in cross_notes:
+        path = re.split(r"[:\s(]", str(n.get("location") or "").strip())[0].removeprefix("./")
+        n["filed_as"] = [f["id"] for f in merged if path and (f.get("fix") or {}).get("ownership") != "accepted"
+                         and any(isinstance(w, dict) and str(w.get("sc")) == str(n.get("sc")) for w in f.get("wcag") or [])
+                         and any(isinstance(e, dict) and str(e.get("file") or "").removeprefix("./") == path for e in f.get("evidence") or [])]
+    unfiled = [n for n in cross_notes if not n["filed_as"]]
     exceptions = [{"id": f["id"], "title": f.get("title"), **(f.get("fix", {}).get("exception") or {}),
                    "reason": (f.get("fix", {}).get("exception") or {}).get("reason") or f.get("fix", {}).get("summary")}
                   for f in merged if f.get("fix", {}).get("ownership") == "accepted"]
@@ -824,9 +835,14 @@ def main():
             lines += [f"    · {t}" for t in c["titles"]]
     if severity_upgrades:
         lines += ["", "## Severity floors from persona key-flow results", ""] + [f"- {u}" for u in severity_upgrades]
-    if cross_notes:
-        lines += ["", "## Cross-lens notes (observations outside a lens; the owner decides whether they are findings)", ""]
-        lines += [f"- {n.get('sc', '?')} · {n.get('location', '?')} · {n.get('note', '')} ({n['agent']})" for n in cross_notes]
+    if unfiled:
+        lines += ["", f"## Cross-lens notes nobody filed ({len(unfiled)})", "",
+                  "No finding cites that criterion in that file, and the lens that owns it never saw the note. "
+                  "Open each location; what holds goes into findings/orchestrator.json.", ""]
+        lines += [f"- {n.get('sc', '?')} · {n.get('location', '?')} · {n.get('note', '')} ({n['agent']})" for n in unfiled]
+    if len(unfiled) < len(cross_notes):
+        lines += ["", f"{len(cross_notes) - len(unfiled)} more cross-lens notes are covered: a finding cites the same criterion in the same file "
+                      "(`filed_as` in `_merged.json`)."]
     if exceptions:
         lines += ["", "## Accepted exceptions (ownership: accepted)", ""]
         lines += [f"- {e['id']} · {e.get('tool', '')} {e.get('rule', '')} {e.get('selector', '')} · {e.get('reason', '')}".replace("  ", " ") for e in exceptions]
@@ -848,7 +864,8 @@ def main():
 
 
     print(f"{len(all_findings)} raw findings from {len(agents)} agents (+{len(persona_findings)} from personas) → {len(merged)} merged; "
-          f"{len(cand)} root-cause clusters; coverage {dict(counts)}; {len(conflicts)} conflicts; {len(problems)} problems to resolve, {len(problems.notes)} settled by the merge")
+          f"{len(cand)} root-cause clusters; coverage {dict(counts)}; {len(conflicts)} conflicts; {len(problems)} problems to resolve, {len(problems.notes)} settled by the merge"
+          + (f"; {len(unfiled)} cross-lens notes nobody filed" if unfiled else ""))
     all_users = [f["id"] for f in merged if f.get("affects_all_users")]
     if all_users:
         print("affects all users: " + ", ".join(all_users))
