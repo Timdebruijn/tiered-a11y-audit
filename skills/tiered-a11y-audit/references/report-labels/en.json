@@ -88,6 +88,7 @@
   "instances": "{n} instances",
   "selector": "selector",
   "to1": "{r} to 1",
+  "decimal": ".",
   "and_then": "{a}, then {b}",
   "before": "before",
   "after": "after",
@@ -136,6 +137,20 @@
     "d": "D. Legal context"
   },
   "method": "{agent}: {method}; examined {n} files or flows; not examined: {skipped}.",
+  "lens": {
+    "semantics-structure": "semantics and structure",
+    "keyboard-focus": "keyboard and focus",
+    "visual-perception": "visual perception",
+    "forms-input": "forms and input",
+    "dynamic-content": "dynamic content",
+    "content-media": "content and media",
+    "framework-maximizer": "framework and tooling"
+  },
+  "method_word": {
+    "static": "read in the code",
+    "runtime": "tried in the running application",
+    "both": "read in the code and tried in the running application"
+  },
   "voice_p": "The personas below are simulations by an AI, not real users. These ran: {names}.",
   "no_advice": "No single change was found that resolves several findings at once.",
   "nothing": "Nothing in this category.",
