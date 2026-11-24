@@ -525,6 +525,48 @@ def test_a_visible_fix_without_its_design_impact_is_asked_for():
         assert not said and merged["findings"][0]["tier_rationale"] == "A darker border.", (said, merged["findings"][0])
 
 
+def test_a_note_for_another_lens_is_listed_until_a_finding_covers_it():
+    note = lambda sc, where, **more: dict({"sc": sc, "location": where, "note": f"seen at {where}"}, **more)
+    lens = lambda name, notes: {"agent": name, "findings": [], "cross_lens_notes": notes}
+    with tempfile.TemporaryDirectory() as d:
+        ws = claims_workspace(d, [finding("ORC-001")])                       # cites 2.1.1 in src/page.html
+        files = {"semantics-structure.json": lens("semantics-structure", [
+                     note("2.1.1", "src/page.html:3"),                       # that criterion in that file: covered
+                     note("2.1.1", "./src/page.html (the menu)"),            # the same file, written another way
+                     note("3.3.2", "src/page.html:3"),                       # the file, another criterion
+                     note("2.1.1", "src/other.html:9"),                      # the criterion, another file
+                     note("3.3.2", ""), "not a note"]),
+                 "content-media.json": lens("content-media", [note("3.3.2", "src/page.html:3")])}
+        for name, content in files.items():
+            (ws / "findings" / name).write_text(json.dumps(content), encoding="utf-8")
+        r = merge(ws)
+        assert r.returncode == 0, r.stderr
+        assert r.stdout.strip().endswith("; 4 cross-lens notes nobody filed"), r.stdout
+        notes = json.loads((ws / "findings" / "_merged.json").read_text(encoding="utf-8"))["cross_lens_notes"]
+        assert [n["filed_as"] for n in notes] == [[], ["ORC-001"], ["ORC-001"], [], [], []], notes   # content-media comes first
+        md = (ws / "findings" / "_merged.md").read_text(encoding="utf-8")
+        listed = md.split("## Cross-lens notes nobody filed (4:")[1].split("\n\n")[1].splitlines()
+        assert [l.split(" · ")[0] + "@" + l.split(" · ")[1] for l in listed] == [
+            "- 3.3.2@src/page.html:3", "- 3.3.2@src/page.html:3", "- 2.1.1@src/other.html:9", "- 3.3.2@"], listed
+        assert listed[0].endswith("(content-media)") and listed[1].endswith("(semantics-structure)")
+        assert "2 more cross-lens notes are covered" in md
+
+        # the orchestrator files what two lenses noted: both notes are covered, and nothing is announced any more
+        orc = ws / "findings" / "orchestrator.json"
+        data = json.loads(orc.read_text(encoding="utf-8"))
+        data["findings"].append(finding("ORC-002", wcag=[{"sc": "3.3.2", "name": "Labels or Instructions", "level": "A"}]))
+        orc.write_text(json.dumps(data), encoding="utf-8")
+        r = merge(ws)
+        assert r.stdout.strip().endswith("; 2 cross-lens notes nobody filed"), r.stdout
+        md = (ws / "findings" / "_merged.md").read_text(encoding="utf-8")
+        assert "nobody filed (2:" in md and "4 more cross-lens notes are covered" in md
+
+    with tempfile.TemporaryDirectory() as d:                                 # no note at all: no heading, no count
+        ws = claims_workspace(d, [finding("ORC-001")])
+        r = merge(ws)
+        assert "cross-lens" not in r.stdout and "Cross-lens" not in (ws / "findings" / "_merged.md").read_text(encoding="utf-8")
+
+
 def test_a_coverage_reason_is_kept_under_either_key():
     with tempfile.TemporaryDirectory() as d:
         ws = workspace(d, {"keyboard-focus.json": {"agent": "keyboard-focus", "lenses": ["keyboard-focus"], "findings": [], "sc_coverage": {

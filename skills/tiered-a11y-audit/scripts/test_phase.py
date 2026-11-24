@@ -125,6 +125,15 @@ def test_phase_4_wants_every_expert_every_criterion_and_a_current_merge():
     f = ws / "findings" / "operate.json"
     good = f.read_text(encoding="utf-8")
 
+    # a profile corrected while verifying: the personas would read the copy in a brief built before it
+    profile = ws / "stack-profile.md"
+    before = profile.stat()
+    os.utime(profile, ns=(before.st_atime_ns, (ws / "briefs" / "_agents.json").stat().st_mtime_ns + 1))
+    got = gaps(ws, "4")
+    assert len(got) == 1 and "run build_briefs.py again before the personas start" in got[0], got
+    script("build_briefs.py", HERE.parent, ws, "--mini")
+    assert gaps(ws, "4") == [], gaps(ws, "4")
+
     f.write_text(json.dumps(skeleton(ws, "operate")), encoding="utf-8")       # the untouched skeleton is not a report
     merge(ws)
     got = gaps(ws, "4")

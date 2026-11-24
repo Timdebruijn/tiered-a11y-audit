@@ -98,6 +98,12 @@ def merged_is_current(ws: Path, gaps: list):
     return merged
 
 
+def briefs_are_current(ws: Path, gaps: list, who: str = "") -> None:
+    profile, built = ws / "stack-profile.md", ws / "briefs" / "_agents.json"
+    if profile.is_file() and built.is_file() and older(built, profile):
+        gaps.append(f"stack-profile.md changed after the briefs were built: run build_briefs.py again{who}, the briefs carry a copy of it")
+
+
 def phase3(ws: Path, gaps: list) -> None:
     for name in ("stack-detect.md", "stack-profile.md", "pattern-inventory.md", "colour-pairs.md"):
         if not filled(ws / name):
@@ -114,8 +120,7 @@ def phase3(ws: Path, gaps: list) -> None:
         missing = [n for n in names if not filled(ws / "briefs" / f"{n}.md")]
         if missing:
             gaps.append(f"briefs missing for {', '.join(map(str, missing))}: run build_briefs.py again")
-        if profile.is_file() and older(ws / "briefs" / "_agents.json", profile):
-            gaps.append("stack-profile.md changed after the briefs were built: run build_briefs.py again, the briefs carry a copy of it")
+        briefs_are_current(ws, gaps)
     digest, auto = ws / "aria-digest.md", ws / "automated"
     if auto.is_dir() and not (auto / "summary.json").is_file():
         gaps.append("automated/ has no summary.json: the runtime scan did not finish. Run it again, or delete automated/ "
@@ -147,6 +152,8 @@ def phase4(ws: Path, gaps: list) -> None:
         if bare:
             gaps.append(f"findings/{name}.json marks {', '.join(bare)} not-tested or n/a without a reason in the note")
     merged_is_current(ws, gaps)
+    # a correction made while verifying reaches the personas only through a brief built after it
+    briefs_are_current(ws, gaps, " before the personas start")
 
 
 def phase5(ws: Path, gaps: list) -> None:
