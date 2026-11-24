@@ -55,6 +55,8 @@ node ./axe_scan.mjs \
 
 Action objects, exact shapes: `{"click": "<selector>"}` (add `"force": true` when Playwright calls an element invisible, e.g. inside a `hidden md:flex` wrapper — or open it with `press` instead, which is often more reliable), `{"type": "<selector>", "value": "x"}` types real keystrokes so key-event listeners fire (`fill` is an alias that does the same; plain `page.fill()` would set the value without key events and make search-as-you-type look broken), `{"press": "Slash"}`, `{"wait": 400}`, `{"goto": "<url>"}`. `"viewport"` per state reaches mobile-only UI. A state whose actions fail is still scanned and reported with `stateReached: false` and the reason. Actions must not mutate data: open things, don't submit them.
 
+A selector is any Playwright selector, not only CSS, which saves looking up a class name for every tab of an application that routes by state: `"text=Graphs"` is the element whose text holds "Graphs" in any case, `"text='Graphs'"` and `"button:text-is('Graphs')"` want exactly that text, and `"nav >> text=Graphs"` looks inside what stands before the arrows. `click` takes the first element that matches. `type` wants exactly one and fails on a second: end the selector with `>> nth=0` to take the first.
+
 axe runs in both colour schemes, each in its own browser context with a fresh load. Never run axe twice on one page with a colour-scheme flip in between: the second run reports the first scheme's foreground against the second scheme's background and fabricates serious contrast violations near 1.0 to 1 on every page.
 
 The script creates its contexts with `bypassCSP: true`, so apps with a strict Content-Security-Policy (`style-src 'self'`) still get the injected text-spacing stylesheet and axe. Hand-written helpers need the same option. Every check is wrapped individually; a failing check lands in `errors` in the JSON instead of dropping the URL.
@@ -64,14 +66,24 @@ Pitfall for hand-written helpers: `AxeBuilder` requires a page from `browser.new
 Per URL it writes `<slug>.json` with:
 - `axe` (light) and `axeDark` (dark scheme): violations (WCAG 2.0/2.1/2.2 A+AA and best-practice tags), with impact, nodes, selectors;
 - `tabWalk`: sequence of focused elements (tag, role, accessible name, focus-indicator heuristic, obscured-by-overlay heuristic, bounding box) and trap detection;
-- `reflow`: whether horizontal scrolling occurs at 320 CSS px width, with the overflowing elements;
+- `reflow`: whether horizontal scrolling occurs at 320 CSS px width (`fails`), with the overflowing elements, and under `offscreen` the text and controls that are cut off at the left or the top of the page (see below);
+- `widths`: the same measurement, without a verdict, at the view's own viewport and at each width of `--widths` (768 and 1024 unless you say otherwise: a 1280 pixel window at 167 and 125 percent zoom, where a desktop user who zooms ends up and a phone layout has often not started yet). Each width is a fresh load with the state's actions, so it costs a load per view; `--widths 0` leaves them out and `--widths 640,768,1024` adds 200 percent;
 - `targets`: interactive elements smaller than 24×24 CSS px (inline links in text exempted);
 - `textSpacing`: elements whose text gets clipped under the SC 1.4.12 override;
 - `motion`: running animations/media before and after `reducedMotion: 'reduce'` — `ignoresReducedMotion: true` is a tier-1 finding waiting to happen;
 - `<slug>.aria.yml`: the accessibility tree (Playwright ≥ 1.49);
-- screenshots: default, 320 px, forced colours, dark scheme, deuteranopia (CDP emulation), text-spacing.
+- screenshots: default, 320 px and each width of `--widths`, forced colours, dark scheme, deuteranopia (CDP emulation), text-spacing.
 
-`summary.json` has one line per URL for a quick overview.
+`offscreen` is what a reflow check on the width of the page cannot see: a popover placed with a negative `left` does not widen the page, so nothing scrolls, and the part left of the page's start cannot be reached at all. Listed are elements that hold text of their own or are a control, whose box lies partly left of or above the start of the page, with their position in pixels. Not listed: what lies wholly outside (a skip link or a closed drawer waiting there), what sticks out by one pixel (a visually hidden label), what is hidden or fully transparent, what sits in a strip that an action scrolled along, and anything to the left on a right-to-left page, which scrolls that way. A fixed element is measured against the window, the rest against the start of the page, so a page that an action scrolled is measured the same. Open shadow roots are looked into; frames and closed shadow roots are not. It is a heuristic: a carousel that shows the edge of the previous slide looks the same, and so does a skip link that leaves a sliver in view, so look at the screenshot of that width before it becomes a finding.
+
+The script prints one row per view while it runs and writes the same rows to `summary.json`. A row holds the counts, and:
+- `rules` and `rulesDark`: the axe rules that failed in the light and the dark scheme, each with its number of elements, which is what the headline of the baseline needs;
+- `offscreenAt`: the widths at which something is cut off as described above;
+- `notReachedAt`: the widths at which the state's actions failed while they worked at its own viewport, such as a menu button that only a phone shows. Those widths have no measurement, and `reflowFails` is `null` when 320 is one of them. `stateReached` is false only when the actions fail at the state's own viewport; then no width is measured, and every other width is listed here without being tried.
+
+In the file of a view, the reason is under `errors.actions` for the state's own viewport and under `reason` of the width for another one. It names the action that failed, with the value of a `type` left out. A width that could not be loaded at all is missing from `widths` and named in `errors` as `width768`; a screenshot that failed is `shot768`, where the one at 320 pixels used to be `reflowShot`.
+
+`node test_scan.mjs` checks all of this against pages it serves itself; it needs the same two packages, so copy it into the scratch directory next to `axe_scan.mjs`.
 
 Pages behind login: pass `--storage-state auth.json` (a Playwright storage state the user creates by logging in themselves; never type the user's real credentials). For a dev/test app with seeded test accounts the user can point you to them.
 

@@ -53,6 +53,7 @@ For component-library / design-system repos: flows = the stories or demo pages o
 ## Automated baseline (headline)
 - axe (light/dark): <counts and the notable rule ids per view>
 - Tab walk: <traps? invisible focus? obscured?>   - Reflow 320 px: <ok | culprits>
+- Cut off at the page edge: <none | view, width and element, after a look at the screenshot>
 - Small targets: <n candidates>   - Text spacing: <clipped?>   - Reduced motion respected: <yes/no>
 - Project lint/test output with a11y rules: <summary | none>
 

@@ -164,7 +164,7 @@ Say in the method section of the report that nobody was there to confirm these. 
    ```
    node "$SCRATCH"/axe_scan.mjs --out <repo>/.a11y-audit/automated --channel chrome --steps states.json <urls…>
    ```
-   Read `summary.json`. Automated tools find a minority of real issues — this is input for the experts, not the audit.
+   The script prints one row per view and writes the same rows to `summary.json`, so there is nothing to read again. A row names the axe rules that failed with their number of elements (`rules`, `rulesDark`), the widths at which text or a control is cut off where no scrolling reaches it (`offscreenAt`: look at the screenshot of that width before it goes into the profile) and the widths at which a state could not be opened (`notReachedAt`). Automated tools find a minority of real issues — this is input for the experts, not the audit.
 3. With a runtime, digest the accessibility trees the scan captured. Without one, skip this and leave no empty file behind:
    ```
    python3 "SKILL_DIR"/scripts/aria_digest.py <repo>/.a11y-audit/automated > <repo>/.a11y-audit/aria-digest.md
@@ -300,6 +300,6 @@ Exports, on request or when the context calls for them (a team that works from t
 - `scripts/export_findings.py` — SARIF 2.1.0, draft ACR conformance table, CSV.
 - `scripts/grade_findings.py` — detection rate, misses and unmatched findings against a ground-truth file (used by the evals).
 - `scripts/contrast.py` — WCAG contrast ratio, minimal hue-preserving fixes, alpha flattening, palette batch mode.
-- `scripts/axe_scan.mjs` — Playwright + axe runtime scan with keyboard walk, reflow, text-spacing, reduced-motion and target-size checks, plus forced-colours / dark / colour-blind screenshots.
+- `scripts/axe_scan.mjs` — Playwright + axe runtime scan with keyboard walk, reflow at 320 pixels, content cut off at the page edge at four widths, text-spacing, reduced-motion and target-size checks, plus forced-colours / dark / colour-blind screenshots.
 - `evals/` (at the repository root, beside this skill's parent `skills/`) — four test cases: a fixture site with seeded issues (with `ground-truth.json` for `grade_findings.py`, which gives a detection rate), a focused review, a non-frontend repo, and a themed site with an off-limits submodule. Run them from the repository root with `claude plugin eval . --scaffold --allow-tools Bash Write Edit`: the cases need those three tools and they are stripped unless granted on the command line. Or run by hand.
 - `README.md`, `CHANGELOG.md` — for the repository; not read during a run.

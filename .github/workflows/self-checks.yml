@@ -1,8 +1,8 @@
 name: Self-checks
 
 # The scripts each have a plain-assert self-check next to them, the pattern graders of the eval cases have
-# one in evals/, and the README is held to the skill's own read-aloud rules. Nothing here calls a model or
-# costs money: the eval suite is run by hand.
+# one in evals/, and the README is held to the skill's own read-aloud rules. The runtime scan is checked
+# against pages its self-check serves. Nothing here calls a model or costs money: the eval suite is run by hand.
 
 on:
   pull_request:
@@ -43,3 +43,19 @@ jobs:
           exit $status
       - name: README follows its own rules
         run: python skills/tiered-a11y-audit/scripts/lint_report.py README.md
+
+  scan:
+    name: Runtime scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run the scan against the pages of its self-check
+        # Node and Google Chrome come with the runner image. The two packages are installed the way an audit
+        # installs them, unpinned, so a release of either that breaks the scan shows up here first.
+        run: |
+          mkdir "$RUNNER_TEMP/scan" && cd "$RUNNER_TEMP/scan"
+          npm init -y >/dev/null
+          npm i playwright @axe-core/playwright
+          cp "$GITHUB_WORKSPACE"/skills/tiered-a11y-audit/scripts/axe_scan.mjs "$GITHUB_WORKSPACE"/skills/tiered-a11y-audit/scripts/test_scan.mjs .
+          node test_scan.mjs --channel chrome
