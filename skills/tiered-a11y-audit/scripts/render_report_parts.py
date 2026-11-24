@@ -88,7 +88,7 @@ PROSE = "report-prose.md"
 PROSE_HEAD = """<!-- The prose of the report: one section per gap of REPORT.draft.md.
      Write your text under each "=== key ===" line, in the report language. Leave those lines as they are.
      Everything inside a comment like this one is dropped, so a hint or a list to choose from can stay.
-     The comments right under a key are the hint: every run writes them again, so keep a note of your own below your text.
+     The first comment under a key is the hint, with the list after it: every run writes those again. A note of your own goes below them.
      A section left empty stays a gap in the report; the optional ones are then left out with their heading.
      Then run render_report_parts.py again: it writes REPORT.md. Do not edit REPORT.md by hand. -->
 """
@@ -128,7 +128,9 @@ def hint_lines(g) -> list:
     return out
 
 
-LEADING_COMMENTS = re.compile(r"\A(?:\s*<!--.*?-->)+", re.S)
+# The hint as hint_lines() writes it: the first comment under a key, and the list to choose from when one follows it.
+# A comment after those is the orchestrator's own and belongs to the text.
+HINT = re.compile(r"\A\s*<!--.*?-->(?:\s*<!-- to choose from or to sort:.*?-->)?", re.S)
 
 
 def write_prose_file(path: Path, gaps: list):
@@ -136,9 +138,14 @@ def write_prose_file(path: Path, gaps: list):
     already written there, unchanged. Returns (sections that are new, written sections whose hint is no longer the one
     their text was written under).
 
-    Only the comments right under a key are replaced, because those are the hint. Text, and a comment further down in
-    it, is kept as it is. Whatever stands above the first key stays too."""
-    old = path.read_text(encoding="utf-8", errors="replace") if path.is_file() else ""
+    Only the first comment under a key is replaced, with the list to choose from when one follows it, because those are
+    the hint. Text, and any other comment, is kept as it is. Whatever stands above the first key stays too. A file that
+    is not UTF-8 is left alone: writing it again would put a replacement sign where a letter could not be read."""
+    try:
+        old = path.read_text(encoding="utf-8") if path.is_file() else ""
+    except UnicodeDecodeError:
+        print(f"!! {PROSE} is not saved as UTF-8, so its hints were not written again and a letter may be wrong in the report: save it as UTF-8", file=sys.stderr)
+        return [], []
     parts = re.split(r"(?m)^=== ([\w.-]+) ===[ \t]*$", old)
     bodies = dict(zip(parts[1::2], parts[2::2]))
     head = parts[0].rstrip("\n") if parts[0].strip() else PROSE_HEAD.rstrip("\n")
@@ -148,9 +155,10 @@ def write_prose_file(path: Path, gaps: list):
         hint = hint_lines(g)
         if body is None:
             added.append(g.key)
-        had = LEADING_COMMENTS.match(body or "")
+        had = HINT.match(body or "")
         text = (body or "")[had.end() if had else 0:].strip("\n")
-        if text.strip() and had and had.group(0).split() != "\n".join(hint).split():
+        written = re.sub(r"<!--.*?-->", "", text, flags=re.S).strip()       # a note alone is no text that can be out of date
+        if written and had and had.group(0).split() != "\n".join(hint).split():
             moved.append(g.key)
         out += [f"=== {g.key} ===", *hint, text, ""]
     new = "\n".join(out)
@@ -176,7 +184,8 @@ def id_translator(src_to_rep: dict):
     gives it (T1-02). A reader of the report never sees the first kind, apart from the list in appendix C."""
     if not src_to_rep:
         return lambda text: text
-    known = re.compile(r"(?<![\w-])(?:" + "|".join(map(re.escape, src_to_rep)) + r")(?![\w-])")
+    # not as part of a longer word, and not as part of a path or a URL (docs/KBD-003.md)
+    known = re.compile(r"(?<![\w/-])(?:" + "|".join(map(re.escape, src_to_rep)) + r")(?![\w-]|\.\w|/)")
     return lambda text: known.sub(lambda m: src_to_rep[m.group(0)], text)
 
 
@@ -184,16 +193,17 @@ def clip(s: str, n: int) -> str:
     """At most n characters, and never ending inside a code span: a span that was cut open is closed again, so that the
     rest of the row is not read as code."""
     s = s[:n]
+    # ponytail: spans of one backtick, which is what agents write; a span opened with two is not seen as cut open
     if s.count("`") % 2:
         s = s[:-1].rstrip() if s.endswith("`") else s + "`"
     return s
 
 
-def spoken(s: str) -> str:
+def spoken(s: str, ids=True) -> str:
     """Agent text as the report reads it: the ID of a finding as the report numbers it, and a contrast written as 4.5:1 put
     into words, outside code spans. Agents are told to write a contrast in words; this catches the rest.
     Anything of the shape N:1 is taken for a ratio, also a scale of 1:1; a time, an aspect ratio or a line and column are not."""
-    parts = re.split(r"(`[^`]*`)", TO_REP(s))
+    parts = re.split(r"(`[^`]*`)", TO_REP(s) if ids else s)
     return "".join(p if p.startswith("`") else re.sub(r"(?<![A-Za-z0-9_.,:])(\d+(?:[.,]\d+)?):1(?![A-Za-z0-9_:])", lambda m: TO1.format(r=m.group(1)), p) for p in parts)
 
 
@@ -203,9 +213,9 @@ def one(x, what):
     return spoken(s) or WRITE.format(f"{what} is missing in the finding")
 
 
-def cell(x):
+def cell(x, ids=True):
     # a pipe would open a fifth column
-    return spoken(re.sub(r"\s+", " ", re.sub(r"\s*\|\s*", ", ", str(x if x is not None else ""))).strip())
+    return spoken(re.sub(r"\s+", " ", re.sub(r"\s*\|\s*", ", ", str(x if x is not None else ""))).strip(), ids)
 
 
 def where(f, t):
@@ -400,7 +410,7 @@ def main():
             if fp in fp_to:
                 return f"- {fp_to[fp]['report_id']}: {cell(fp_to[fp].get('title'))}"
             title = (then.get(fp) or {}).get("title")      # a finding of the earlier audit: its title can be read aloud, its fingerprint cannot
-            return f"- {cell(title)}" if title else f"- `{fp}`"
+            return f"- {cell(title, ids=False)}" if title else f"- `{fp}`"       # an ID in it is one of that audit, not of this one
         for key in ("resolved", "not_reported", "still_open", "regressed", "new"):
             d += [f"### {t['delta_h'][key]} ({len(delta.get(key) or [])})", ""]
             d += [delta_line(fp) for fp in delta.get(key) or []] or [t["nothing"]]
@@ -485,7 +495,8 @@ def main():
         except (ValueError, OSError, AttributeError):
             continue
         if isinstance(meta, dict) and meta:
-            d.append("- " + t["method"].format(agent=t["lens"].get(p.stem, p.stem), method=t["method_word"].get(meta.get("method"), meta.get("method") or "?"),
+            how = str(meta.get("method") or "?")
+            d.append("- " + t["method"].format(agent=t["lens"].get(p.stem, p.stem), method=t["method_word"].get(how, how),
                                                n=len(meta.get("examined") or []),
                                                skipped=spoken("; ".join(str(x) for x in meta.get("not_examined") or [])) or t["none"]))
     cc = data.get("coverage_counts") or {}

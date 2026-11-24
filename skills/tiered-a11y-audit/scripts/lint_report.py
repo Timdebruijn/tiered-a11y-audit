@@ -42,9 +42,12 @@ PATH_RE = re.compile(r"^([./~@]|\w+://)|/.*/|\.\w{1,5}(:[\d,-]+)?$")
 # Text of the interface, quoted: at most 60 characters between two quotation marks of a kind, on one line. A mark inside
 # a word is an apostrophe (don't, foto's) and neither opens nor closes a quotation.
 # ponytail: by the marks alone, so a sentence of that length in quotation marks is skipped too; code spans stay the sure way.
-QUOTED = (r"""(?<!\w)(?:"(?=\S)[^"\n]{0,58}\S"|'(?=\S)(?:[^'\n]|'(?=\w)){0,58}?\S'|[“„](?=\S)[^”\n]{0,58}\S”"""
-          r"""|‘(?=\S)(?:[^’\n]|’(?=\w)){0,58}?\S’)(?!\w)""")
-SOURCE_ID = r"(?<![\w-])(?:[A-Z]{3}|PER-[a-z-]+)-\d{3}(?![\w-])"
+# A quotation does not run from one table cell into the next.
+QUOTED = (r"""(?<!\w)(?:"(?=\S)[^"\n|]{0,58}[^\s|]"|'(?=\S)(?:[^'\n|]|'(?=\w)){0,58}?[^\s|]'|[“„](?=\S)[^”\n|]{0,58}[^\s|]”"""
+          r"""|‘(?=\S)(?:[^’\n|]|’(?=\w)){0,58}?[^\s|]’)(?!\w)""")
+# The ID of a findings file: KBD-003, PER-low-vision-001, and PER-low-vision-x001 as the merge numbers a persona's finding
+# that came without one. Not as part of a path or a URL.
+SOURCE_ID = r"(?<![\w/-])(?:[A-Z]{3}|PER-[a-z0-9-]+?)-x?\d{3}(?![\w-]|\.\w|/)"
 
 
 def in_ranges(ch: str, ranges) -> bool:
@@ -149,8 +152,9 @@ def lint(text: str, ids: dict | None = None) -> list:
         sources = {s: rid for rid, meta in ids.items() for s in meta.get("source") or []}
         stems = {s.rsplit("-", 1)[0] for s in sources}
         for n, line in enumerate(structure.split("\n"), 1):
-            if re.match(r"\|\s*T[123]-\d{2,}\s*\|", line):
-                continue                                        # a row of appendix C, where the source IDs belong
+            row = cells(line) if line.startswith("|") else []
+            if len(row) > 1 and ID_RE.fullmatch(row[0]) and all(s in sources for s in row[1].split(", ")):
+                continue                                        # a row of appendix C: a report ID and its source IDs, which belong there
             for s in sorted(set(re.findall(SOURCE_ID, line))):
                 if s in sources:
                     out.append((n, "ids", f"{s} is the ID of a findings file: the report calls this finding {sources[s]}"))

@@ -89,7 +89,8 @@ def test_text_of_the_interface_in_quotation_marks_is_a_quotation():
                    "The 12\" screen \u2192 the 24\" one.",
                    "'A whole sentence in quotation marks, which is prose and no label of the interface \u2192 so it is read.'",
                    "The label 'Detail' \u2192 opens the page.",                       # the arrow is beside the quotation, not in it
-                   "'Detail \u2192 and nothing closes it."):
+                   "'Detail \u2192 and nothing closes it.",
+                   TABLE.replace("| one | 1 |", "| say \"Next | \u2192 Done\" |")):   # no quotation runs from one cell into the next
         assert rules(extra(broken)) == {"symbol"}, f"{broken!r}: {lint(extra(broken))}"
 
 
@@ -101,7 +102,13 @@ def test_an_id_of_a_findings_file_is_no_name_for_a_finding():
                        ("The same as KBD-077, which was rejected.", "no finding of this report has it")):
         got = [m for _, r, m in lint(extra(text), IDS) if r == "ids"]
         assert len(got) == 1 and word in got[0], f"{text!r}: {lint(extra(text), IDS)}"
-    quiet = "The hash is SHA-256, the standard ISO-639, and KBD-0021 or XKBD-002 are no IDs of this audit."
+    row = TABLE.replace("| one | 1 |", f"| {rid} | KBD-002 broke the page |")
+    got = [m for _, r, m in lint(extra(row), IDS) if r == "ids"]
+    assert len(got) == 1 and "KBD-002" in got[0], f"a table row that starts with a report ID is not appendix C for that reason: {got}"
+    made_up = dict(IDS, **{"T3-09": {"source": ["PER-low-vision-x001"], "tier": 3}})
+    got = [m for _, r, m in lint(extra("T3-09 is the same as PER-low-vision-x001."), made_up) if r == "ids"]
+    assert len(got) == 1 and "the report calls this finding T3-09" in got[0], f"an ID the merge made up for a persona is not seen: {got}"
+    quiet = "The hash is SHA-256, the standard ISO-639, the files docs/KBD-002.md and KBD-002.png, and KBD-0021 or XKBD-002 are no IDs of this audit."
     assert lint(extra(quiet), IDS) == [], lint(extra(quiet), IDS)
     assert lint(extra("Fix KBD-002 before the rest.")) == [], "without the workspace there is nothing to hold an ID against"
 

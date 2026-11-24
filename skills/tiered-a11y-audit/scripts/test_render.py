@@ -211,20 +211,33 @@ def test_written_prose_is_kept_and_sections_that_are_new_are_added():
     run(FINDINGS, "en", personas={"screen-reader-user": PERSONA})
     ws = LAST_WS
     mine = "My own words, which took an hour.\n\n<!-- my own note, further down -->\n\n```\n=== not a key, it is indented\n```\n   A last line."
-    write_prose(ws, {"in-short": mine.replace("=== not", " === not")})
+    write_prose(ws, {"in-short": mine.replace("=== not", " === not"), "summary": "<!-- my own note, above my text -->\nThe summary.",
+                     "method": "<!-- a note and no text yet -->"})
     (ws / "personas" / "low-vision-user.md").write_text(PERSONA.replace("Screen reader", "Low vision"), encoding="utf-8")
     r, _, _ = run(None, "en", ws)
     assert r.returncode == 0, r.stderr
     text = (ws / "report-prose.md").read_text(encoding="utf-8")
     assert text.startswith("<!-- a hint that must not reach the report -->"), "what stood above the first section was replaced"
     assert mine.replace("=== not", " === not") in text, "written prose was changed"
-    assert text.count("=== in-short ===") == 1 and "=== persona-low-vision-user ===" in text and "=== summary ===" in text, "missing sections were not added"
+    assert "<!-- my own note, above my text -->\nThe summary." in text and "<!-- a note and no text yet -->" in text, "a comment of the orchestrator's own was taken for the hint"
+    assert "The hint of in-short, summary is not the one" in r.stdout, "a section with a note and no text is called out of date, or one with text is not: " + r.stdout
+    assert text.count("=== in-short ===") == 1 and "=== persona-low-vision-user ===" in text and "=== top5-closing ===" in text, "missing sections were not added"
     assert "new sections were added" in r.stdout
     keys = re.findall(r"(?m)^=== (.+) ===$", text)
     assert keys.index("persona-low-vision-user") < keys.index("persona-screen-reader-user") < keys.index("method"), "sections are not in the order of the report"
     before = text
     run(None, "en", ws)
     assert (ws / "report-prose.md").read_text(encoding="utf-8") == before, "a run with nothing new changed the prose file"
+
+
+def test_a_prose_file_that_is_not_utf8_is_left_as_it_is():
+    run(FINDINGS, "en")
+    ws = LAST_WS
+    raw = b"=== in-short ===\n<!-- an old hint -->\nCaf\xe9 voor iedereen.\n"
+    (ws / "report-prose.md").write_bytes(raw)
+    r, _, _ = run(None, "en", ws)
+    assert (ws / "report-prose.md").read_bytes() == raw, "a letter that could not be read was written back as a replacement sign"
+    assert "not saved as UTF-8" in r.stderr, r.stderr
 
 
 def test_a_hint_is_written_again_when_the_findings_behind_it_change():
@@ -313,7 +326,7 @@ def test_a_re_audit_lists_what_nobody_filed_again_apart_from_what_is_resolved_an
     prev.mkdir(parents=True)
     prev.joinpath("_merged.json").write_text(json.dumps([
         {"id": "KBD-004", "title": "Menu needs a mouse", "fingerprint": "kbd-001@src/page.html"},
-        {"id": "SEM-002", "title": "No main heading", "fingerprint": "missing-heading@src/page.html"},
+        {"id": "SEM-002", "title": "No main heading, like KBD-001 then", "fingerprint": "missing-heading@src/page.html"},
         {"id": "DYN-003", "title": "Toast is not announced", "fingerprint": "no-status-message@src/toast.js"}]), encoding="utf-8")
     (ws / "findings" / "_delta-map.json").write_text(json.dumps({"no-status-message@src/toast.js": "resolved"}), encoding="utf-8")
     m = subprocess.run([sys.executable, str(HERE / "merge_findings.py"), str(ws), "--ownership", str(OWNERSHIP), "--previous", str(prev.parent)], capture_output=True, text=True)
@@ -326,7 +339,7 @@ def test_a_re_audit_lists_what_nobody_filed_again_apart_from_what_is_resolved_an
         resolved = draft.split(heads[0])[1].split("###")[0]
         unreported = draft.split(heads[1])[1].split("###")[0]
         assert "- Toast is not announced" in resolved and "No main heading" not in resolved, resolved
-        assert "- No main heading" in unreported, unreported
+        assert "- No main heading, like KBD-001 then" in unreported, "an ID of the earlier audit was given to a finding of this one: " + unreported
         assert "missing-heading@" not in draft and "no-status-message@" not in draft, "a fingerprint is not a line a reader can use"
         assert "- T1-01: Title of kbd-001" in draft.split(heads[2])[1].split("###")[0]
 
@@ -349,13 +362,15 @@ def test_a_cell_is_never_cut_inside_a_code_span():
 def test_a_finding_is_named_by_the_id_the_report_gives_it():
     persona = PERSONA.replace("| KBD-001 |", "| Stuck, see PER-screen-reader-001 and KBD-002 |").replace("1. The button.", "1. The button of PER-screen-reader-001.")
     cov = {"lenses": ["keyboard-focus"], "sc_coverage": {"2.1.2": {"status": "pass", "note": "Other than KBD-002."}}}
-    fs = [finding("KBD-001", description="The same cause as `KBD-002` and PER-screen-reader-001, unlike KBD-0021 and XKBD-002.", verify="Fix KBD-002 first."),
+    fs = [finding("KBD-001", description="The same cause as `KBD-002` and PER-screen-reader-001, unlike KBD-0021 and XKBD-002.", verify="Fix KBD-002 first.",
+                  fix={"ownership": "project", "summary": "See docs/KBD-002.md, KBD-002.png, https://example.org/KBD-002 and KBD-002.", "location": "docs/KBD-002.md"}),
           finding("KBD-002", severity="moderate"), finding("PER-screen-reader-001", severity="minor")]
     _, draft, ids = run(fs, personas={"screen-reader-user": persona}, extra=cov)
     rid = {m["source"][0]: r for r, m in ids.items()}
     a, b, per = rid["KBD-001"], rid["KBD-002"], rid["PER-screen-reader-001"]
     block = block_of(draft, a)
     assert f"The same cause as `{b}` and {per}, unlike KBD-0021 and XKBD-002." in block and f"Fix {b} first." in block, block
+    assert f"See docs/KBD-002.md, KBD-002.png, https://example.org/KBD-002 and {b}. (at docs/KBD-002.md)" in block, "a file name or an address was rewritten"
     assert f"| Stuck, see {per} and {b} |" in draft, "the flow table names a finding by an ID the reader cannot look up"
     assert f"The button of {per}." in draft and f"Other than {b}." in draft, "a persona hint or a coverage note kept the ID of the findings file"
     assert f"| {a} | KBD-001 |" in draft and f"| {per} | PER-screen-reader-001 |" in draft, "appendix C lost the IDs it is there to list"
@@ -369,7 +384,9 @@ def test_dutch_writes_its_numbers_and_its_agents_in_dutch():
     (ws / "findings" / "keyboard-focus.json").write_text(json.dumps({"agent": "keyboard-focus", "findings": [],
                                                                      "coverage": {"method": "both", "examined": ["a", "b"], "not_examined": []}}), encoding="utf-8")
     (ws / "findings" / "my-own-lens.json").write_text(json.dumps({"agent": "my-own-lens", "findings": [], "coverage": {"method": "by ear", "examined": ["a"]}}), encoding="utf-8")
-    _, draft, _ = run(None, "nl", ws)
+    (ws / "findings" / "odd.json").write_text(json.dumps({"agent": "odd", "findings": [], "coverage": {"method": ["static", "runtime"], "examined": []}}), encoding="utf-8")
+    r, draft, _ = run(None, "nl", ws)
+    assert r.returncode == 0 and "- odd: ['static', 'runtime'];" in draft, "a method that is no word of the schema stopped the report: " + r.stderr[-300:]
     assert "- toetsenbord en focus: gelezen in de code en geprobeerd in de draaiende applicatie; 2 bestanden of flows onderzocht" in draft, draft.split("### A.")[1][:600]
     assert "- my-own-lens: by ear; 1 bestanden" in draft, "an agent or a method the labels do not know was dropped"
 
