@@ -97,6 +97,24 @@ def test_ignored_means_every_kind_of_file_in_the_workspace():
         assert got.split(": ", 1)[1].startswith(want), f"{content!r}: {got}"
 
 
+def test_a_backend_beside_the_frontend_is_named_and_the_count_is_explained():
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        (root / "web").mkdir()
+        (root / "web/index.html").write_text('<!doctype html><html lang="en"><head><title>x</title></head><body></body></html>')
+        (root / "web/util.ts").write_text("export const add = (a: number, b: number) => a + b\n")
+        (root / "web/package.json").write_text('{"scripts": {"dev": "vite", "preview": "vite preview"}}')
+        out = run(root).stdout
+        (root / "web/App.tsx").write_text("export const App = () => <main>hi</main>\n")
+        out = run(root).stdout
+        assert line(out, "Project-owned UI files") == "- Project-owned UI files: 2 (HTML 1, TSX 1); not counted: 1 scripts of logic beside the components", line(out, "Project-owned UI files")
+        assert "- Backend:" not in out
+        (root / "go.mod").write_text("module example.test/app\n")
+        out = run(root).stdout
+        assert "(go.mod)" in line(out, "Backend") and "ask how the whole application is started" in line(out, "Backend")
+        assert line(out, "Backend")[len("- Backend: "):] in out.split("\n# Stack detection")[1], "the preflight and the detector say the same thing"
+
+
 def test_audit_size_follows_the_thresholds_of_the_skill():
     assert [mode_for(n).split()[0] for n in (0, 1, 10, 11, 25, 26)] == ["none:", "mini", "mini", "lean", "lean", "full"]
 
