@@ -66,7 +66,11 @@ function parseArgs(argv) {
     else if (a === '--storage-state') opts.storageState = argv[++i];
     else if (a === '--width') opts.width = Number(argv[++i]);
     else if (a === '--height') opts.height = Number(argv[++i]);
-    else if (a === '--widths') opts.widths = argv[++i].split(',').map(Number).filter((w) => w > 0 && w !== 320);
+    else if (a === '--widths') {
+      const given = (argv[++i] ?? '').split(',');
+      if (!given.every((w) => /^\d+$/.test(w))) { console.error('--widths takes widths in pixels, as in 768,1024, or 0 for none.'); process.exit(2); }
+      opts.widths = [...new Set(given.map(Number))].filter((w) => w > 0 && w !== 320);
+    }
     else if (a === '--channel') opts.channel = argv[++i];
     else if (a === '--steps') opts.steps = argv[++i];
     else if (a === '--sitemap') opts.sitemap = argv[++i];
@@ -223,26 +227,35 @@ async function visionDeficiencyShot(ctx, page, file, type) {
 
 // Sideways scrolling at the width the page has now, and content that is cut off where no scrolling reaches it.
 // ponytail: the box of an element that holds text of its own or is a control, not the glyphs, so padding that
-// sticks out counts too; and a carousel that clips its slides is reported like a popover. The orchestrator looks.
+// sticks out counts too; and a carousel that shows the edge of a slide is reported like a popover. The
+// orchestrator looks. Open shadow roots are entered, frames and closed shadow roots are not.
 const measureWidth = (page) => page.evaluate(() => {
   const de = document.documentElement;
+  const within = (root) => [...root.querySelectorAll('*')].flatMap((el) => (el.shadowRoot ? [el, ...within(el.shadowRoot)] : [el]));
+  const pinned = (el) => { for (let a = el; a; a = a.parentElement) if (getComputedStyle(a).position === 'fixed') return true; return false; };
+  const scrolled = (el) => { for (let a = el.parentElement; a && a !== document.body && a !== de; a = a.parentElement) if (a.scrollLeft || a.scrollTop) return true; return false; };
   const overflow = Math.max(0, de.scrollWidth - de.clientWidth);
-  // a right-to-left page scrolls to the left, so what lies left of its start can be reached
+  // a right-to-left page scrolls to the left, so what lies left of its start can be reached; the direction of
+  // the body counts as that of the page (measured in Chrome: with only the body set, scrollX goes to -80)
   const rtl = [de, document.body].some((el) => getComputedStyle(el).direction === 'rtl');
   const control = 'a[href], button, input:not([type=hidden]), select, textarea, [role=button], [role=link], [role=menuitem], [role=tab]';
   const name = (el) => el.tagName.toLowerCase() + (el.id ? '#' + el.id : el.classList.length ? '.' + [...el.classList].slice(0, 2).join('.') : '');
   const culprits = [], offscreen = [], cut = [];
-  for (const el of document.querySelectorAll('body *')) {
+  for (const el of within(document.body)) {
     const r = el.getBoundingClientRect();
     if (r.width <= 0) continue;
     if (overflow > 1 && culprits.length < 15 && r.right > de.clientWidth + 1 && !el.closest('table, pre, [role=grid]')) culprits.push(name(el));
-    const left = Math.round(r.left + scrollX), top = Math.round(r.top + scrollY);
-    const right = Math.round(r.right + scrollX), bottom = Math.round(r.bottom + scrollY);
+    // measured from the start of the page, wherever an action scrolled it to; a fixed element stays with the window
+    const [sx, sy] = (scrollX || scrollY) && pinned(el) ? [0, 0] : [scrollX, scrollY];
+    const left = Math.round(r.left + sx), top = Math.round(r.top + sy);
+    const right = Math.round(r.right + sx), bottom = Math.round(r.bottom + sy);
     // partly outside: wholly outside is how a skip link or an off-canvas drawer waits, and 1 pixel is a visually hidden label
     const partly = bottom > 1 && (rtl || right > 1) && ((!rtl && left < -1) || top < -1);
     if (!partly || r.height <= 0 || cut.some((c) => c.contains(el))) continue;
     if (!el.matches(control) && ![...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())) continue;
-    if (el.checkVisibility && !el.checkVisibility({ opacityProperty: true, visibilityProperty: true })) continue;
+    // the two options in their older spelling as well, for a browser that knows only that one
+    if (el.checkVisibility && !el.checkVisibility({ opacityProperty: true, visibilityProperty: true, checkOpacity: true, checkVisibilityCSS: true })) continue;
+    if (scrolled(el)) continue;   // inside a strip that an action scrolled along: scrolling back reaches it
     cut.push(el);
     if (offscreen.length < 15) offscreen.push({ element: name(el), left, top, right, bottom,
       text: (el.getAttribute('aria-label') || el.innerText || el.value || '').trim().replace(/\s+/g, ' ').slice(0, 40) });
@@ -261,7 +274,11 @@ async function runActions(page, actions) {
     }
     else if (a.press) await page.keyboard.press(a.press);
     else if (a.wait) await page.waitForTimeout(a.wait);
-  } catch (e) { throw new Error(`${String(e).split('\n')[0]} in ${JSON.stringify(a)}`); }   // which action, for the one who fixes it
+  } catch (e) {
+    // which action, for the one who fixes it; not what was typed, which may be a password of a test account
+    const shown = JSON.stringify('value' in a ? { ...a, value: '…' } : a);
+    throw Object.assign(new Error(`${String(e.message).split('\n')[0]} in ${shown}`), { name: e.name });
+  }
 }
 
 async function scanUrl(browser, url, opts, state) {
@@ -315,7 +332,8 @@ async function scanUrl(browser, url, opts, state) {
   result.title = await page.title();
   result.lang = await page.evaluate(() => document.documentElement.lang || null);
   result.axe = await safe('axe', () => axeScan(page), { violations: [], incomplete: [], passesCount: 0 });   // light scheme
-  const own = await safe('width', () => measureWidth(page));   // before the tab walk moves focus and scrolls
+  // before the tab walk moves focus; not for a state that was not reached, which would measure another page
+  const own = result.stateReached ? await safe('width', () => measureWidth(page)) : null;
   result.targets = await safe('targets', () => smallTargets(page), { count: 0, items: [] });
   await safe('screenshot', () => page.screenshot({ path: `${base}.default.png`, fullPage: true }));
   await safe('ariaSnapshot', async () => fs.writeFile(`${base}.aria.yml`, await page.locator('body').ariaSnapshot()));
@@ -353,8 +371,8 @@ async function scanUrl(browser, url, opts, state) {
     rulesDark: Object.fromEntries(result.axeDark.violations.map((v) => [v.id, v.nodeCount])),
     invisibleFocus: result.tabWalk.invisibleFocusCount, possibleTrap: result.tabWalk.possibleTrap,
     reflowFails: result.reflow.fails, smallTargets: result.targets.count,
-    offscreenAt: [...new Set(measured.filter((m) => m.offscreenCount).map((m) => m.viewportWidth))],
-    notReachedAt: [...new Set(measured.filter((m) => m.reached === false).map((m) => m.viewportWidth))],
+    offscreenAt: [...new Set(measured.filter((m) => m.offscreenCount).map((m) => m.viewportWidth))].sort((a, b) => a - b),
+    notReachedAt: [...new Set(measured.filter((m) => m.reached === false).map((m) => m.viewportWidth))].sort((a, b) => a - b),
     textSpacingClipped: result.textSpacing.clippedCandidates.length, ignoresReducedMotion: result.motion.ignoresReducedMotion,
     errors: Object.keys(result.errors),
   };

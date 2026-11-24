@@ -47,6 +47,7 @@ jobs:
   scan:
     name: Runtime scan
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - name: Run the scan against the pages of its self-check
