@@ -545,7 +545,7 @@ def test_a_note_for_another_lens_is_listed_until_a_finding_covers_it():
         notes = json.loads((ws / "findings" / "_merged.json").read_text(encoding="utf-8"))["cross_lens_notes"]
         assert [n["filed_as"] for n in notes] == [[], ["ORC-001"], ["ORC-001"], [], [], []], notes   # content-media comes first
         md = (ws / "findings" / "_merged.md").read_text(encoding="utf-8")
-        listed = md.split("## Cross-lens notes nobody filed (4:")[1].split("\n\n")[1].splitlines()
+        listed = md.split("## Cross-lens notes nobody filed (4)\n")[1].split("\n\n")[1].splitlines()
         assert [l.split(" · ")[0] + "@" + l.split(" · ")[1] for l in listed] == [
             "- 3.3.2@src/page.html:3", "- 3.3.2@src/page.html:3", "- 2.1.1@src/other.html:9", "- 3.3.2@"], listed
         assert listed[0].endswith("(content-media)") and listed[1].endswith("(semantics-structure)")
@@ -559,7 +559,13 @@ def test_a_note_for_another_lens_is_listed_until_a_finding_covers_it():
         r = merge(ws)
         assert r.stdout.strip().endswith("; 2 cross-lens notes nobody filed"), r.stdout
         md = (ws / "findings" / "_merged.md").read_text(encoding="utf-8")
-        assert "nobody filed (2:" in md and "4 more cross-lens notes are covered" in md
+        assert "nobody filed (2)" in md and "4 more cross-lens notes are covered" in md
+
+        # an accepted exception on that criterion in that file is not somebody filing the note
+        data["findings"][1]["fix"] = {"ownership": "accepted", "summary": "Left as it is.", "exception": {"reason": "By design."}}
+        orc.write_text(json.dumps(data), encoding="utf-8")
+        r = merge(ws)
+        assert r.stdout.strip().endswith("; 4 cross-lens notes nobody filed"), r.stdout
 
     with tempfile.TemporaryDirectory() as d:                                 # no note at all: no heading, no count
         ws = claims_workspace(d, [finding("ORC-001")])
