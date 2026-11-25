@@ -13,6 +13,7 @@ import json
 import os
 import re
 import sys
+import unicodedata
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -34,11 +35,24 @@ SSG_CONFIGS = ("hugo.toml", "hugo.yaml", "hugo.json", "_config.yml", ".eleventy.
 GENERATED_ONLY_BY_SSG = {"public", "site"}
 
 
-# A document in which the project states its own accessibility: ACCESSIBILITY.md (after SECURITY.md), a11y.md, a
-# statement. By its name, in the languages listed; add a language by adding a word. Documents only: a page of the
-# product with such a name is interface, and the scanners count it as that.
-A11Y_DOC = re.compile(r"(?i)^(?:accessibility|a11y|toegankelijkheid|barrierefreiheit|accessibilit[eé]|accesibilidad|accessibilit[aà])"
-                      r"[\w .-]*\.(?:md|mdx|markdown|txt|rst|adoc)$")
+# A document in which the project may state its own accessibility: ACCESSIBILITY.md (after SECURITY.md), a11y.md,
+# a statement, a VPAT. Found by its name alone, in the languages listed; add a language by adding a word. The file
+# is not opened: what it says is the orchestrator's to read, and a name is all a script can judge in any language.
+A11Y_WORD = r"(?:accessibility|accessibilit[eéaà]|a11y|toegankelijkheid|barrierefreiheit|accesibilidad|vpat)"
+A11Y_DOC = re.compile(rf"(?i)(?:.*(?<![a-z]){A11Y_WORD}.*\.(?:md|mdx|markdown|txt|rst|adoc)|{A11Y_WORD})$")
+A11Y_FOLDER = re.compile(rf"(?i)^{A11Y_WORD}$")
+
+
+def a11y_doc(rel: str) -> bool:
+    """At the root or one folder down, where such a document is kept: ACCESSIBILITY.md, docs/a11y-statement.md,
+    content/toegankelijkheid.md. A README or index in a folder that carries the word counts as that folder's
+    document, so docs/accessibility/README.md is found too. A page in HTML is interface, not a document.
+    ponytail: a name is a guess. A checklist or a test plan with the word in its name is listed as well, which is
+    why the list says "by file name" and the orchestrator reads before it believes."""
+    parts = unicodedata.normalize("NFC", rel).split("/")      # macOS may hand back a name with its accents apart
+    if re.match(r"(?i)^(?:readme|index)\.\w+$", parts[-1]) and len(parts) >= 2 and A11Y_FOLDER.match(parts[-2]):
+        return len(parts) <= 3 and bool(re.search(r"(?i)\.(?:md|mdx|markdown|txt|rst|adoc)$", parts[-1]))
+    return len(parts) <= 2 and bool(A11Y_DOC.match(parts[-1]))
 
 
 def ssg_generates_public(root):
@@ -340,10 +354,8 @@ def analyse(root: Path, max_files: int) -> dict:
         where = classify_path(rel, build, vendor)
         if where == "build":
             continue
-        # ponytail: at the root or one folder down (docs/, .github/), where such a file is kept; deeper ones are not looked for
-        if where == "project" and rel.count("/") <= 1 and A11Y_DOC.match(name):
-            heads = [h.strip() for h in re.findall(r"(?m)^#{1,3} +(.+?)[ #]*$", read_text(p, 60_000))]
-            result["a11y_docs"].append({"path": rel, "headings": heads[:12]})
+        if where == "project" and a11y_doc(rel):
+            result["a11y_docs"].append(rel)
         if name == "package.json" and where == "vendor":
             try:
                 data = json.loads(read_text(p))
@@ -468,7 +480,7 @@ def finalise(r: dict) -> dict:
     r["file_types"] = dict(r["file_types"].most_common())
     r["infra_templates"] = dict(r["infra_templates"].most_common())
     r["csp"] = sorted(set(r["csp"]))[:10]
-    r["a11y_docs"] = sorted(r["a11y_docs"], key=lambda d: d["path"])
+    r["a11y_docs"] = sorted(r["a11y_docs"])
     r["suppressions"] = dict(r["suppressions"].most_common())
     r["signal_examples"] = dict(r["signal_examples"])
     r["other_ecosystems"] = sorted(set(r["other_ecosystems"]))
@@ -536,9 +548,10 @@ def finalise(r: dict) -> dict:
     if r["suppressions"]:
         hints.append(f"{sum(r['suppressions'].values())} suppressed a11y lint warnings found.")
     if r["a11y_docs"]:
-        hints.append(f"The project documents its own accessibility in {', '.join(d['path'] for d in r['a11y_docs'])}: read it before the stack profile "
-                     "is written. What it says about conformance is a claim to re-measure; what it says about scope, known limitations "
-                     "and exceptions belongs in the profile, with the path.")
+        docs = r["a11y_docs"]
+        hints.append(f"By their file name, {', '.join(docs[:5])}{f' and {len(docs) - 5} more' if len(docs) > 5 else ''} may state the project's own "
+                     "accessibility: read each before the stack profile is written. What one says about conformance is a claim to re-measure; "
+                     "what it says about scope, known limitations and exceptions belongs in the profile, with the path.")
     r["hints"] = hints
     return r
 
@@ -590,9 +603,11 @@ def print_human(r: dict) -> None:
     if r["infra_templates"]:
         print("Not counted (infra or vendored): " + ", ".join(f"{k}: {v}" for k, v in r["infra_templates"].items()))
     if r["a11y_docs"]:
-        print("\n## Accessibility documents of the project (its own claims: re-measure them, never take them over)")
-        for d in r["a11y_docs"]:
-            print(f"- {d['path']}" + (f" — sections: {'; '.join(d['headings'])}" if d["headings"] else ""))
+        print("\n## Documents that may state the project's own accessibility (found by file name: read each, re-measure what it claims)")
+        for path in r["a11y_docs"][:20]:
+            print(f"- {path}")
+        if len(r["a11y_docs"]) > 20:
+            print(f"- and {len(r['a11y_docs']) - 20} more")
     if r["csp"]:
         print("\n## Content-Security-Policy found in: " + ", ".join(r["csp"]))
     if r["embedded_html"]:
