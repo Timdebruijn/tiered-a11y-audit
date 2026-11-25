@@ -101,7 +101,9 @@ def merged_is_current(ws: Path, gaps: list):
 def briefs_are_current(ws: Path, gaps: list, who: str = "") -> None:
     profile, built = ws / "stack-profile.md", ws / "briefs" / "_agents.json"
     if profile.is_file() and built.is_file() and older(built, profile):
-        gaps.append(f"stack-profile.md changed after the briefs were built: run build_briefs.py again{who}, with the flags it was run with, the briefs carry a copy of it")
+        flags = (manifest(ws, []) or {}).get("flags")
+        said = f" ({' '.join(map(str, flags))})" if isinstance(flags, list) and flags else ""
+        gaps.append(f"stack-profile.md changed after the briefs were built: run build_briefs.py again{who}, with the flags it was run with{said}, the briefs carry a copy of it")
 
 
 def phase3(ws: Path, gaps: list) -> None:
@@ -159,10 +161,13 @@ def phase4(ws: Path, gaps: list) -> None:
 def phase5(ws: Path, gaps: list) -> None:
     m = manifest(ws, gaps) or {}
     done = [p.stem for p in (ws / "personas").glob("*.md") if filled(p)]
-    need = ["screen-reader-user"] if m.get("mode") == "mini" else CORE
+    # the briefs were built for the personas named with --personas; without that flag, the core of the mode
+    picked = [p for p in m.get("personas") or [] if isinstance(p, str)] if m.get("personas_selected") else []
+    need = picked or (["screen-reader-user"] if m.get("mode") == "mini" else CORE)
     missing = [p for p in need if p not in done]
     if missing:
-        gaps.append(f"no persona report from {', '.join(missing)} in personas/")
+        gaps.append(f"no persona report from {', '.join(missing)} in personas/" + (
+            ": build_briefs.py was run with --personas naming them. Run them, or build the briefs again with the selection you mean" if picked else ""))
     if m.get("mode") == "mini" and len(done) < 2:
         gaps.append(f"mini mode runs the screen reader persona plus one other: {len(done)} reported")
     load(ws / "findings" / f"{m.get('maximizer') or 'framework-maximizer'}.json", gaps)

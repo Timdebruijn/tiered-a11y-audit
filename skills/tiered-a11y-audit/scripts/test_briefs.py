@@ -17,13 +17,13 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 SKILL = HERE.parent
 sys.path.insert(0, str(HERE))
-from build_briefs import own_rows, without_fields, without_sections  # noqa: E402
+from build_briefs import PERSONAS, chosen_personas, own_rows, without_fields, without_sections  # noqa: E402
 ROW = re.compile(r"^\| (\d\.\d\.\d+) \|", re.M)
 
 
-def build(*flags, skill=SKILL):
-    ws = Path(tempfile.mkdtemp())
-    (ws / "stack-profile.md").write_text("- Mode: test\n", encoding="utf-8")
+def build(*flags, skill=SKILL, profile="- Mode: test\n", ws=None):
+    ws = ws or Path(tempfile.mkdtemp())
+    (ws / "stack-profile.md").write_text(profile, encoding="utf-8")
     r = subprocess.run([sys.executable, str(HERE / "build_briefs.py"), str(skill), str(ws), *flags], capture_output=True, text=True)
     return r, ws / "briefs"
 
@@ -105,6 +105,58 @@ def test_a_persona_gets_the_fields_it_writes_and_not_the_expert_file_rules():
     for needed in ("- `id`", "- `instances`", "- `affected_users`", "best_practice_only", "- `fingerprint`", "- `visual_impact`", "- `evidence`", "- `wcag`", "- `severity`", "- `proposed_tier`", "- `fix.location`",
                    "- `effort`", "- `confidence`", "- `verify`", "Contrast findings additionally include"):
         assert needed in text, f"persona brief lost: {needed}"
+
+
+def test_persona_briefs_are_written_for_the_personas_that_are_named():
+    want = ["screen-reader-user", "low-vision-user", "motor-voice-user", "cognitive-user", "colour-blind-user"]
+    r, briefs = build("--lean", "--playbook", "1,3", "--personas", "colour-blind, cognitive,Screen-Reader,low-vision-user,motor-voice")
+    assert r.returncode == 0, r.stderr
+    manifest = json.loads((briefs / "_agents.json").read_text(encoding="utf-8"))
+    assert manifest["personas"] == want and manifest["personas_selected"] is True, manifest
+    assert manifest["flags"] == ["--lean", "--playbook", "1,3", "--personas", "colour-blind, cognitive,Screen-Reader,low-vision-user,motor-voice"], manifest["flags"]
+    assert sorted(p.stem for p in briefs.glob("*-user.md")) == sorted(want), "a brief for a persona that does not run is one somebody may spawn"
+    assert "5 persona" in r.stdout and "personas: " + ", ".join(want) + "\n" in r.stdout, r.stdout
+
+    # a selection made narrower afterwards takes the brief of the persona that fell out with it, and says so
+    r, briefs = build("--personas", "screen-reader,low-vision,motor-voice,cognitive", ws=briefs.parent)
+    assert sorted(p.stem for p in briefs.glob("*-user.md")) == sorted(want[:4]), sorted(briefs.glob("*-user.md"))
+    assert "removed the brief of colour-blind-user" in r.stdout, r.stdout
+
+    # without the flag nothing is guessed: all eight, as before, and the manifest says nobody chose
+    r, briefs = build()
+    manifest = json.loads((briefs / "_agents.json").read_text(encoding="utf-8"))
+    assert manifest["personas"] == PERSONAS and manifest["personas_selected"] is False and manifest["flags"] == [], manifest
+    assert len(list(briefs.glob("*-user.md"))) == 8 and "no --personas given" in r.stdout and "removed" not in r.stdout, r.stdout
+
+
+def test_a_list_that_would_run_fewer_personas_than_the_mode_asks_for_is_refused():
+    core = "screen-reader,low-vision,motor-voice,cognitive"
+    for flags, why in ((("--personas", "screen-reader,low-vision,cognitive"), "leaves out motor-voice"),
+                       (("--lean", "--personas", "older-novice"), "leaves out screen-reader, low-vision, motor-voice, cognitive"),
+                       (("--mini", "--personas", "screen-reader"), "plus at least one other"),
+                       (("--mini", "--personas", "low-vision,motor-voice"), "the screen reader persona plus"),
+                       (("--personas", core + ",colourblind"), "not colourblind"),
+                       (("--personas", " , "), "not an empty list")):
+        r, briefs = build(*flags)
+        assert r.returncode != 0 and why in r.stderr and r.stderr.startswith("build_briefs: "), (flags, r.stderr)
+        assert not (briefs / "_agents.json").exists(), "a refused run must not leave a manifest the phase check would read"
+    assert chosen_personas(core + ",deaf", "full") == PERSONAS[:4] + ["deaf-user"]
+    assert chosen_personas("motor-voice,screen-reader", "mini") == ["screen-reader-user", "motor-voice-user"]
+    r, briefs = build("--mini", "--personas", "screen-reader,low-vision")
+    assert r.returncode == 0 and sorted(p.stem for p in briefs.glob("*-user.md")) == ["low-vision-user", "screen-reader-user"], r.stderr
+
+
+def test_a_persona_gets_the_tiering_rules_it_proposes_a_tier_by():
+    r, briefs = build()
+    p, lens = brief(briefs, "cognitive-user"), brief(briefs, "forms-input")
+    for heading in ("## The decision test", "## Tier 3 — The road to a 10", "## Edge cases", "## Severity (independent of tier)"):
+        assert heading in p, f"a persona proposes a tier and a severity without {heading}"
+    assert "## Fix ownership" not in p and "## Scoring rubric" not in p and "### Persona verdicts set a floor" not in p
+    assert "## Fix ownership" in lens, "the cut for personas must not reach the experts"
+    # a persona cites criteria too, so it gets the list of the ones that are cited wrongly, once, and nothing else of the experts' protocol
+    assert p.count("## Commonly misapplied criteria") == 1 and "**3.2.3 Consistent Navigation**" in p and "**4.1.3 Status Messages**" in p
+    assert "## Fix ownership" not in p.split("## Commonly misapplied criteria")[1].split("# Stack profile")[0]
+    assert "## Common false positives" not in p and "Own your criteria" not in p
 
 
 def test_a_cut_ends_where_the_section_or_the_field_ends():

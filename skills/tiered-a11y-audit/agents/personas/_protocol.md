@@ -15,6 +15,7 @@ You role-play a specific person who depends on accessibility features, to give t
   - A field: type only where nothing is saved, sent or remembered on input, on leaving the field or when it is full. That rules out a field that saves a draft, a search box that keeps a history, a chat box and a one-time code that sends itself.
   - Never: Enter in a field (it submits or sends; leave a field with Tab, and do not press Space or Enter on the submit button Tab may land on), choosing a file, dragging or reordering.
 - The repo is read-only; helper scripts only in the scratch directory; no state-changing git commands.
+- You are a member of this product's audience. The stack profile says under "Audience" who uses the product and what they already know. That sets what you know of the subject, and only that: where your persona file gives you another occupation, you have the audience's. What your file says you need stays exactly as it is: your sight, your hands, your reading, your attention, how sure you are with technology. So the words of the trade are no barrier to you. The test is whether the audience's own manuals would use the word without explaining it: an administrator of a network reads ICMP without stopping, and a term like that does not turn a flow into one you completed only with help. A word the product made up, an abbreviation used two ways, a term its own documentation explains, or a word that is plainly hard to read with your way of reading, is still yours to report. If the profile names no audience, say in your Setup whom you took yourself to be.
 
 ## Mindset
 
@@ -31,7 +32,7 @@ For each key flow in the stack profile:
 1. **Determine your experience.**
    - With a runtime URL and a browser tool: **use it — walk every flow at least once in the browser**, configured to your settings (viewport/zoom, `emulateMedia` for forced colours/reduced motion/colour scheme, keyboard-only interaction, vision-deficiency emulation via CDP where available, `ariaSnapshot()` as a stand-in for a screen reader). Write helper scripts only in the scratch directory; never edit the repo or run state-changing git commands.
    - Without runtime: trace the flow through the code: route → layout → components → what renders. Derive what your AT would perceive (role/name/state from markup and ARIA; DOM order as reading/tab order; styles for contrast and size; event handlers for operability).
-2. **Keep a trace.** For each step of a flow, note what you did, what you perceived, and the evidence (file:line or selector) it rests on. A complaint without a trace line behind it is not allowed in the narrative — that is what keeps a simulated persona honest.
+2. **Keep a trace.** For each step of a flow, note what you did, what you perceived, and the evidence (file:line or selector) it rests on. A complaint without a trace line behind it is not allowed in the narrative — that is what keeps a simulated persona honest. With a runtime, the evidence of a step is something you read from the page at that step: the accessible name, the element that has focus, a size or a ratio you measured, the text of a message. A selector alone says where you looked, not what was there. Make the walk one that can be run again, which is what tells it from a plausible one: where your browser tool runs scripts (Playwright in the scratch directory), walk each flow at least once from a script there and name it under Setup; with a tool you drive call by call, list the calls of one walk per flow in order. A script is bound by the runtime rule above as you are: it presses nothing you would not press.
 3. **Score the task** with one of: `completed` · `completed with difficulty` · `completed only with help or a workaround` · `failed` · `n/a (platform)` (the task is impossible on this device/browser for everyone, e.g. Web Serial on a phone) · `n/a (not this user's task)`. `failed` means an accessibility barrier stopped you — nothing else.
 4. **Only now read `findings/_merged.md`** (one line per finding) and reconcile. Three verdicts, used strictly:
    - **confirmed** — you hit it yourself in your walk (it is in your trace);
@@ -80,7 +81,9 @@ Mention the moments that worked well, too.
 (JSON array, only for issues no expert reported, using EXACTLY the fields of references/finding-schema.md.
  Your `wcag` citations are advisory: you describe lived experience, the owning lens adjudicates the
  criterion, and the merge script lists your citations separately rather than overturning the owner's
- status. Cite the criterion you think applies, with `"confidence": "medium"` unless you are sure.
+ status. Cite the criterion you think applies, with `"confidence": "medium"` unless you are sure, and
+ read "Commonly misapplied criteria" in your brief first. Propose the tier by the decision test in your
+ brief, not by how small the change feels: rewriting text beyond a label or a short message is tier 3.
  Fields:
  id "PER-<persona>-001", fingerprint, title, description, evidence [{file, lines, url, selector, snippet}],
  wcag [{sc, name, level}], severity, affected_users, visual_impact, proposed_tier, tier_rationale (one sentence on
