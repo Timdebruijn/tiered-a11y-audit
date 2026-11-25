@@ -177,7 +177,7 @@
   },
   "statement": {
     "title": "Toegankelijkheid (concept)",
-    "intro": "Een concept, geschreven op {date} uit een toegankelijkheidsaudit van dit project. Het is geen toezegging en geen wettelijke toegankelijkheidsverklaring. De delen met \"Voor de eigenaar\" zijn aan jou om te schrijven, en elke regel is aan jou om te controleren voordat dit als ACCESSIBILITY.md in de repository komt.",
+    "intro": "Een concept, geschreven op {date} uit een toegankelijkheidsaudit van dit project. Het is geen toezegging en geen wettelijke toegankelijkheidsverklaring. De delen met \"Voor de eigenaar\" schrijft de eigenaar zelf, en elke regel moet gecontroleerd zijn voordat dit als ACCESSIBILITY.md in de repository komt.",
     "owner": "Voor de eigenaar: {what}",
     "commitment_h": "Toezegging",
     "commitment_todo": "de norm waar dit project naar streeft, wie ervoor verantwoordelijk is, en sinds wanneer.",
@@ -185,18 +185,21 @@
     "scope_p": "De audit ging over, in de woorden van zijn eigen aantekeningen: {scope}",
     "scope_todo": "wat bij het project hoort en wat niet, zoals inhoud van derden.",
     "status_h": "Conformiteitsstatus",
-    "status_p": "Gemeten tegen de {n} succescriteria van WCAG 2.2 op niveau A en AA: aan {met} voldaan, aan {failed} niet voldaan, {na} niet van toepassing, {untested} niet getest.",
-    "how_static": "Dit komt uit een audit door AI-agents die de code hebben gelezen, met gesimuleerde gebruikers. Niemand heeft de draaiende applicatie geprobeerd, en er is niet getest met mensen met een beperking.",
-    "how_runtime": "Dit komt uit een audit door AI-agents die de code hebben gelezen en de draaiende applicatie hebben geprobeerd, met gesimuleerde gebruikers. Er is niet getest met mensen met een beperking.",
+    "status_p": "Gemeten tegen de {n} succescriteria van WCAG 2.2 op niveau A en AA: aan {met} voldaan, aan {failed} niet voldaan, {na} niet van toepassing, {untested} niet getest. Niet getest betekent niet dat eraan voldaan is.",
+    "how_static": "Dit komt uit een audit door AI-agents die de code hebben gelezen, met gesimuleerde gebruikers. Er hoorde geen geautomatiseerde scan van de draaiende applicatie bij, en er is niet getest met mensen met een beperking.",
+    "how_runtime": "Dit komt uit een audit door AI-agents die de code hebben gelezen, met een geautomatiseerde scan van de draaiende applicatie en gesimuleerde gebruikers. Er is niet getest met mensen met een beperking.",
     "known_h": "Bekende beperkingen",
-    "known_p": "De audit vond {n} problemen die dit project zelf moet oplossen. De {shown} ernstigste volgen; het auditrapport heeft ze allemaal, met de oplossing.",
-    "known_none": "De audit vond geen probleem dat dit project zelf moet oplossen.",
+    "known_p": "De audit vond {n} problemen tegen een WCAG-criterium die dit project zelf moet oplossen, zonder mee te tellen wat hij vermoedde en niet kon verifiëren. De {shown} ernstigste volgen. Het auditrapport heeft ze allemaal met de oplossing, en ook de opmerkingen over best practice.",
+    "known_none": "De audit vond geen probleem tegen een WCAG-criterium dat dit project zelf moet oplossen.",
     "best_practice": "best practice",
     "accepted_h": "Uitzonderingen",
     "accepted_p": "Voorlopig geaccepteerd zoals ze zijn, elk met de reden.",
     "upstream_h": "Buiten dit project",
     "upstream_p": "Gevonden in code die dit project niet onderhoudt. De oplossing hoort bij de beheerder daarvan.",
     "report_h": "Een barrière melden",
-    "report_todo": "hoe iemand een barrière meldt, en hoe snel die antwoord krijgt."
+    "report_todo": "hoe iemand een barrière meldt, en hoe snel die antwoord krijgt.",
+    "limits": "Een audit als deze vindt een deel van de problemen, niet alle, en wat hij vond is van {date}: waar de code sindsdien is veranderd, beschrijft dit hem niet meer.",
+    "status_none": "Aan hoeveel criteria is voldaan, is niet vastgesteld.",
+    "more": "En nog {n}, in het auditrapport."
   }
 }

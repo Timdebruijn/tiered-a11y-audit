@@ -13,7 +13,8 @@ accessibility-md
        A draft of an ACCESSIBILITY.md for a project that has none, in the report language: what the audit covered,
        how many criteria are met, the most severe open problems, what was accepted and what is someone else's to
        fix. What only the owner can say, the commitment and where to report a barrier, is left as a line that
-       says so. Written into the workspace as ACCESSIBILITY.draft.md, never into the repository.
+       says so. Written into the audit's workspace as ACCESSIBILITY.draft.md; putting it at the root of the
+       repository is the owner's step.
 
 Pure standard library. Reads findings/_merged.json, coverage.md and report-ids.json (if present).
 """
@@ -132,36 +133,56 @@ def to_acr(ws, merged, ids, t):
 KNOWN_SHOWN = 15
 
 
+def plain(s, n=160) -> str:
+    """Text of an agent or of the audited project as one plain line. It goes into a document that people will read
+    and a team may publish, so nothing in it may act as structure: no line break, no comment, no fence, no HTML or
+    link outside a code span, nothing at its start that Markdown reads as a heading or a list, and not over n long."""
+    s = re.sub(r"\s+", " ", re.sub(r"<!--|-->|`{2,}", " ", str(s or ""))).strip().lstrip("#>*+=|- ").strip()
+    if len(s) > n:
+        s = s[:n].rsplit(" ", 1)[0].rstrip(" ,;:") + " …"
+    if s.count("`") % 2:                                      # a span that the cut, or the writer, left open
+        s = s.replace("`", "")
+    return "".join(part if part.startswith("`") else part.replace("<", "&lt;").replace("](", "] (") for part in re.split(r"(`[^`]*`)", s))
+
+
 def to_accessibility_md(ws: Path, merged, t) -> str:
     """A draft of the project's own accessibility document, from what the audit established and nothing else."""
     L = t["statement"]
     own = lambda what: f"*{L['owner'].format(what=what)}*"
-    counts = merged.get("coverage_counts") or {}
+    today = datetime.date.today().isoformat()
+    counts = merged.get("coverage_counts") if isinstance(merged.get("coverage_counts"), dict) else {}
     profile = ws / "stack-profile.md"
     scope = re.search(r"(?m)^- Scope:[ \t]*(.+?)[ \t]*$", profile.read_text(encoding="utf-8", errors="replace")) if profile.is_file() else None
-    scope = scope.group(1) if scope and not re.search(r"<[^>]*>|…", scope.group(1)) else None      # a line still holding the template says nothing
-    out = [f"# {L['title']}", "", L["intro"].format(date=datetime.date.today().isoformat()), "",
+    scope = plain(scope.group(1), 300) if scope and not re.search(r"^<.*>$|…", scope.group(1)) else None      # a line still holding the template says nothing
+    status = L["status_p"].format(n=sum(counts.values()), met=counts.get("pass", 0), failed=counts.get("fail", 0), na=counts.get("n/a", 0),
+                                  untested=counts.get("not-tested", 0)) if sum(counts.values()) else L["status_none"]
+    # the scan left its summary or it did not: that much is known. Whether an agent used the application is not on file.
+    how = L["how_runtime" if (ws / "automated" / "summary.json").is_file() else "how_static"]
+    out = [f"# {L['title']}", "", L["intro"].format(date=today), "",
            f"## {L['commitment_h']}", "", own(L["commitment_todo"]), "",
            f"## {L['scope_h']}", ""] + ([L["scope_p"].format(scope=scope), ""] if scope else []) + [own(L["scope_todo"]), "",
-           f"## {L['status_h']}", "",
-           L["status_p"].format(n=sum(counts.values()), met=counts.get("pass", 0), failed=counts.get("fail", 0), na=counts.get("n/a", 0),
-                                untested=counts.get("not-tested", 0)), "",
-           L["how_runtime" if (ws / "automated" / "summary.json").is_file() else "how_static"], ""]
+           f"## {L['status_h']}", "", status, "", how, "", L["limits"].format(date=today), ""]
 
-    def line(f):
-        sc = ", ".join("WCAG " + w["sc"] for w in f.get("wcag") or [] if isinstance(w, dict) and w.get("sc")) or L["best_practice"]
-        return f"- {str(f.get('title') or '').strip().rstrip('.')} ({sc}, {t['sev'].get(f.get('severity'), f.get('severity'))})."
+    def line(f, reason=""):
+        sc = ", ".join("WCAG " + str(w["sc"]) for w in f.get("wcag") or [] if isinstance(w, dict) and w.get("sc")) or L["best_practice"]
+        sev = t["sev"].get(f.get("severity"), f.get("severity"))
+        return f"- {plain(f.get('title')).rstrip('.')} ({sc}{', ' + str(sev) if sev else ''})." + (f" {plain(reason)}" if plain(reason) else "")
+
+    def listed(fs):
+        # an exception is listed with the reason that was given for it; a proposed fix is no reason
+        why = lambda f: ((f.get("fix") or {}).get("exception") or {}).get("reason")
+        return [line(f, why(f)) for f in fs[:KNOWN_SHOWN]] + ([L["more"].format(n=len(fs) - KNOWN_SHOWN)] if len(fs) > KNOWN_SHOWN else []) + [""]
     by_owner = {"accepted": [], "upstream": [], "project": []}
-    for f in sorted(merged["findings"], key=lambda f: (SEV_RANK.get(f.get("severity"), 9), str(f.get("id")))):
+    for f in sorted((f for f in merged["findings"] if plain(f.get("title"))), key=lambda f: (SEV_RANK.get(f.get("severity"), 9), str(f.get("id")))):
         by_owner.get((f.get("fix") or {}).get("ownership"), by_owner["project"]).append(f)
-    mine = by_owner["project"]
+    # a known limitation is a problem against a criterion that held up: a remark on best practice and a suspicion
+    # that nobody could verify stay in the report
+    mine = [f for f in by_owner["project"] if f.get("wcag") and f.get("confidence") != "low"]
     out += [f"## {L['known_h']}", "", L["known_p"].format(n=len(mine), shown=min(len(mine), KNOWN_SHOWN)) if mine else L["known_none"], ""]
     out += [line(f) for f in mine[:KNOWN_SHOWN]] + ([""] if mine else [])
     for key in ("accepted", "upstream"):
         if by_owner[key]:
-            reason = lambda f: str(((f.get("fix") or {}).get("exception") or {}).get("reason") or (f.get("fix") or {}).get("summary") or "").strip()
-            out += [f"## {L[key + '_h']}", "", L[key + "_p"], ""]
-            out += [line(f) + (f" {reason(f)}" if key == "accepted" and reason(f) else "") for f in by_owner[key]] + [""]
+            out += [f"## {L[key + '_h']}", "", L[key + "_p"], ""] + listed(by_owner[key])
     out += [f"## {L['report_h']}", "", own(L["report_todo"]), ""]
     return "\n".join(out)
 

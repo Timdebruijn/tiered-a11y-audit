@@ -32,7 +32,7 @@ Alongside the personas, a framework-maximizer looks for the single token, base c
 
 There are six modes: a full audit, a lean audit for a small interface, a mini audit for a handful of files without forms, a focused review of one component or pull request, a re-audit, and a mode that applies the fixes.
 
-The findings can be exported three ways: as SARIF 2.1.0, the Static Analysis Results Interchange Format that GitHub and GitLab code scanning read; as a draft conformance table in the style of an Accessibility Conformance Report, for whoever has to sign one; and as comma-separated values for a ticket system. For a project that has no document stating its own accessibility, the audit can also leave a draft of one in its workspace, an `ACCESSIBILITY.md` with what was covered, how many criteria are met and the most severe open problems. The commitment in it is left for the owner to write.
+The findings can be exported three ways: as SARIF 2.1.0, the Static Analysis Results Interchange Format that GitHub and GitLab code scanning read; as a draft conformance table in the style of an Accessibility Conformance Report, for whoever has to sign one; and as comma-separated values for a ticket system. For a project that has no document stating its own accessibility, the audit can also leave a draft of one in its workspace, an `ACCESSIBILITY.md` with what was covered, how many criteria are met and the most severe problems that held up. It says that such an audit finds part of the problems, and the commitment in it is left for the owner to write.
 
 ## Install
 
