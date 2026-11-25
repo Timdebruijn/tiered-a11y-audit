@@ -352,7 +352,8 @@ def main():
             own_lines += [f"### {t['accepted_h']} ({len(acc)})", ""]
             for f in acc:
                 ex = f.get("fix", {}).get("exception") or {}
-                tool = f" ({ex.get('tool')} {code(ex.get('rule'))}" + (f", {code(ex['selector'])})" if ex.get("selector") else ")") if ex.get("rule") else ""
+                on = f", {code(ex['selector'])}" if ex.get("selector") else ""        # an exception taken for a whole page names none
+                tool = f" ({ex.get('tool')} {code(ex.get('rule'))}{on})" if ex.get("rule") else ""
                 own_lines.append(f"- {f['report_id']}{tool}: {cell(ex.get('reason') or f.get('fix', {}).get('summary') or '?')}")
             own_lines.append("")
         ownership[tier] = own_lines
