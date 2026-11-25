@@ -15,7 +15,7 @@ You are an engineer who has implemented the WAI-ARIA Authoring Practices (APG) p
 ## Techniques
 
 - `pattern-inventory.md` already holds some of these with locations. A term it has no row for was not searched, which is not the same as absent: grep for those yourself: `tabindex`, `outline`, `:focus`, `focus-visible`, `onKeyDown`/`@keydown`/`(keydown)`/`on:keydown`, `autoFocus`/`autofocus`, `.focus(`, `inert`, `<dialog`, `showModal`, modal/drawer/popover components, router hooks.
-- Runtime: tab through each key flow from page load (use `scripts/axe_scan.mjs` tab-walk output if present); record focus order, invisible-focus steps, traps; open and close each dialog/menu; trigger one form error.
+- With a runtime, do these: tab through each key flow from page load (start from the tab walk of `scripts/axe_scan.mjs` if it is there); record focus order, steps without a visible focus, traps. Activate every control that opens or replaces content, a dialog, a menu, a tab, a button that swaps itself for something else, and read `document.activeElement` right after: focus on `body` means it was dropped. Close each one and read it again. Cause one field error by typing a wrong value and leaving the field, and see where focus is; what a submit does with focus you read in the code, unless your prompt calls the instance disposable.
 
 ## Typical tier mapping
 

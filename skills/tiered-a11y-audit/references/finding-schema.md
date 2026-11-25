@@ -59,6 +59,7 @@ Every expert agent writes one JSON file: `.a11y-audit/findings/<agent>.json`.
       },
       "effort": "M",
       "confidence": "high",
+      "method": "both",
       "verify": "Tab to the trigger, press Enter/Space/ArrowDown; menu opens and focus moves into it; Esc closes and returns focus."
     }
   ]
@@ -95,6 +96,7 @@ Language: the text a person reads (`title`, `description`, `fix.summary`, `fix.s
 - `leverage` (framework-maximizer only): `{ "finding_ids": [...], "location": "...", "note": "..." }` on an entry that resolves several existing findings at one spot. The merge script attaches it to each target as `leverage_points`, lists all entries ranked by findings resolved (that list is the report's structural-advice section), and does NOT count the entry as a finding. Never put such an entry in `_dedupe.json`.
 - `effort`: S (< 1 h), M (≤ 1 day), L (> 1 day).
 - `confidence`: high (verified in code/runtime), medium (strong indication), low (suspicion — needs runtime check). Low-confidence findings are listed separately in the report as "to verify".
-- `verify`: concrete steps a developer can follow to confirm the fix.
+- `verify`: concrete steps a developer can follow to confirm the fix. For what was seen in the running app: the view, the window size, the starting point and each key or click in order ("at 1280 by 800, in the Alerts view, scroll to the bottom, press Shift+Tab until …"), not only the outcome to expect.
+- `method` (per finding, optional): `static`, `runtime` or `both`: how this finding was observed. The same word at the top, under `coverage`, says it for the whole pass.
 
 Contrast findings additionally include `"colours": {"fg": "#hex", "bg": "#hex", "ratio": 3.2, "required": 4.5, "suggested_fg": "#hex", "suggested_ratio": 4.6, "delta_e_ok": 0.05}` produced with `scripts/contrast.py`.
