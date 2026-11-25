@@ -218,6 +218,15 @@ def cell(x, ids=True):
     return spoken(re.sub(r"\s+", " ", re.sub(r"\s*\|\s*", ", ", str(x if x is not None else ""))).strip(), ids)
 
 
+def code(x, ids=True):
+    """A path, a selector or another location as the report prints it: in a code span, so that it is read as code and not
+    as a word with a slash in it, which is what the read-aloud rules refuse. A value that already carries a span of its
+    own is left as it is: the agents are told to write their paths that way. A value without a letter or a digit, such as
+    the question mark that stands for a place a finding did not give, is no code and stays as it is."""
+    s = cell(x, ids)
+    return f"`{s}`" if "`" not in s and re.search(r"\w", s) else s
+
+
 def where(f, t):
     spots = []
     for ev in [e for e in (f.get("evidence") or []) if isinstance(e, dict)][:3]:
@@ -253,7 +262,7 @@ def block(f, t, level="###", compact=False):
     fix = f.get("fix") if isinstance(f.get("fix"), dict) else {}
     fixline = one(fix.get("summary"), "fix")
     if fix.get("location"):
-        fixline += f" ({t['at']} {cell(fix['location'])})"
+        fixline += f" ({t['at']} {code(fix['location'])})"
     if fix.get("framework_idiom") and not compact:
         fixline += " " + one(fix["framework_idiom"], "idiom")
     lines = [f"{level} {f['report_id']}. {cell(f.get('title'))}", "", first_sentence(f, t), "",
@@ -338,12 +347,13 @@ def main():
         ups = [f for f in fs if f.get("fix", {}).get("ownership") == "upstream"]
         acc = [f for f in fs if f.get("fix", {}).get("ownership") == "accepted"]
         if ups:
-            own_lines += [f"### {t['upstream_h']} ({len(ups)})", ""] + [f"- {f['report_id']}: {cell(f.get('fix', {}).get('location') or '?')}" for f in ups] + [""]
+            own_lines += [f"### {t['upstream_h']} ({len(ups)})", ""] + [f"- {f['report_id']}: {code(f.get('fix', {}).get('location') or '?')}" for f in ups] + [""]
         if acc:
             own_lines += [f"### {t['accepted_h']} ({len(acc)})", ""]
             for f in acc:
                 ex = f.get("fix", {}).get("exception") or {}
-                tool = f" ({ex.get('tool')} {ex.get('rule')} on {ex.get('selector')})" if ex.get("rule") else ""
+                on = f", {code(ex['selector'])}" if ex.get("selector") else ""        # an exception taken for a whole page names none
+                tool = f" ({ex.get('tool')} {code(ex.get('rule'))}{on})" if ex.get("rule") else ""
                 own_lines.append(f"- {f['report_id']}{tool}: {cell(ex.get('reason') or f.get('fix', {}).get('summary') or '?')}")
             own_lines.append("")
         ownership[tier] = own_lines
@@ -361,7 +371,7 @@ def main():
                 status = TO_REP(c[4] + (f" ({c[5]})" if c[5] else ""))
                 cov_table.append(f"| {c[0]} | {c[1]} | {status_word(status)} | {clip(spoken(c[6] or t['none']), 70)} |")
     full_table = [f"| {t['id']} | {t['source']} | {t['severity']} | {t['location']} |", "|---|---|---|---|"] + \
-        [f"| {f['report_id']} | {', '.join(ids[f['report_id']]['source'])} | {sev(f)} | {clip(loc(f), 70)} |" for f in findings]
+        [f"| {f['report_id']} | {', '.join(ids[f['report_id']]['source'])} | {sev(f)} | {clip(code(loc(f)), 70)} |" for f in findings]
 
     # ---- report-parts.md: the tables alone -------------------------------------------------
     out = ["# Report parts (generated; paste, don't retype)", "", "## Tier counts", ""] + counts_table
@@ -473,7 +483,7 @@ def main():
     if lev:
         d += [Gap("advice-intro", "one introductory paragraph for the table of places that resolve several findings at once"), t["ann_advice"].format(n=len(lev)), "",
               "| " + " | ".join(t["adv_cols"]) + " |", "|---|---|---|---|"]
-        d += [f"| {clip(cell(e.get('location') or e.get('title')), 60)} | {', '.join(sorted({src_to_rep.get(s, s) for s in e.get('resolves') or []})) or t['none']} | "
+        d += [f"| {clip(code(e.get('location')) or cell(e.get('title')), 60)} | {', '.join(sorted({src_to_rep.get(s, s) for s in e.get('resolves') or []})) or t['none']} | "
               f"{t['effort_unit'].get(e.get('effort'), e.get('effort') or '?')} | {clip(cell(e.get('note') or t['none']), 90)} |" for e in lev]
     else:
         d.append(t["no_advice"])

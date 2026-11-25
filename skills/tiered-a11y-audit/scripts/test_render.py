@@ -344,6 +344,51 @@ def test_a_re_audit_lists_what_nobody_filed_again_apart_from_what_is_resolved_an
         assert "- T1-01: Title of kbd-001" in draft.split(heads[2])[1].split("###")[0]
 
 
+def test_a_path_without_an_extension_still_passes_the_linter():
+    """A directory, a folder of content or a selector has no file extension, so the linter reads it as a word with a
+    slash in it and refuses the report. Every place where the renderer prints one has to put it in a code span: the fix
+    line of a finding, the upstream and the accepted list, the structural advice, appendix C, and the fingerprint of a
+    finding of the earlier audit that nobody gave a title."""
+    upstream = finding("SEM-001", fix={"ownership": "upstream", "summary": "The theme does it.", "location": "themes/paper"})
+    accepted = finding("VIS-002", fix={"ownership": "accepted", "summary": "Kept as it is.", "location": "assets/css",
+                                       "exception": {"tool": "axe", "rule": "color-contrast", "selector": "main > .quote", "reason": "Decorative only."}})
+    whole = finding("VIS-003", fix={"ownership": "accepted", "summary": "Kept as it is.", "location": "assets/css",
+                                    "exception": {"tool": "axe", "rule": "region", "reason": "The whole page."}})
+    lever = finding("FWK-001", kind="leverage", wcag=[], title="One layout for every page",
+                    leverage={"finding_ids": ["KBD-001"], "note": "One place.", "location": "layouts/_default"},
+                    fix={"ownership": "project", "summary": "Edit the layout.", "location": "layouts/_default"})
+    here = finding("CNT-001", fingerprint="index-without-summary@content/projects",
+                   evidence=[{"file": "content/projects", "lines": ""}], fix={"ownership": "project", "summary": "Add a summary.", "location": "content/projects"})
+    run([finding("KBD-001"), upstream, accepted, whole, lever, here], personas={"screen-reader-user": PERSONA})
+    ws = LAST_WS
+    prev = ws.parent / "previous" / "findings"
+    prev.mkdir(parents=True)
+    # the earlier audit as the first version of this skill wrote it: a fingerprint and no title to read aloud instead
+    prev.joinpath("_merged.json").write_text(json.dumps({"findings": [{"id": "SEM-009", "fingerprint": "index-without-summary@content/pages"}]}), encoding="utf-8")
+    (ws / "findings" / "_delta-map.json").write_text(json.dumps({"index-without-summary@content/pages": "resolved"}), encoding="utf-8")
+    m = subprocess.run([sys.executable, str(HERE / "merge_findings.py"), str(ws), "--ownership", str(OWNERSHIP), "--previous", str(prev.parent)], capture_output=True, text=True)
+    assert m.returncode == 0, m.stderr
+    r, draft, _ = run(None, "en", ws)
+    assert r.returncode == 0, r.stderr
+    ids = json.loads((ws / "report-ids.json").read_text(encoding="utf-8"))
+    assert "- `index-without-summary@content/pages`" in draft, "a bare fingerprint of the earlier audit is in the report"
+    rid = {meta["source"][0]: r for r, meta in ids.items()}
+    assert "(at `content/projects`)" in draft and f"- {rid['SEM-001']}: `themes/paper`" in draft, draft
+    assert "(axe `color-contrast`, `main > .quote`)" in draft, "a tool rule or a selector is not in a code span"
+    assert "(axe `region`):" in draft, "an exception that was taken for the whole page named a selector it does not have"
+    assert "| `layouts/_default` |" in draft and "| `content/projects` |" in draft, "a place in a table is not in a code span"
+    assert {rule for _, rule, _ in lint(draft, ids)} == {"unwritten"}, lint(draft, ids)
+
+    keys = re.findall(r"(?m)^=== (.+) ===$", (ws / "report-prose.md").read_text(encoding="utf-8"))
+    texts = {k: f"Text for {k}." for k in keys if k != "legal"}
+    texts["works-well"] = "- The one positive that was chosen."
+    texts["tier3"] = "- Test with disabled users once a quarter."
+    write_prose(ws, texts)
+    run(None, "en", ws)
+    r = subprocess.run([sys.executable, str(HERE / "lint_report.py"), str(ws / "REPORT.md"), "--workspace", str(ws)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout + r.stderr
+
+
 def test_a_cell_is_never_cut_inside_a_code_span():
     from render_report_parts import clip
     assert clip("see `src/app/page.tsx` there", 12) == "see `src/app`", "a span cut open was not closed"
@@ -380,7 +425,7 @@ def test_a_finding_is_named_by_the_id_the_report_gives_it():
     a, b, per = rid["KBD-001"], rid["KBD-002"], rid["PER-screen-reader-001"]
     block = block_of(draft, a)
     assert f"The same cause as `{b}` and {per}, unlike KBD-0021 and XKBD-002." in block and f"Fix {b} first." in block, block
-    assert f"See docs/KBD-002.md, KBD-002.png, https://example.org/KBD-002 and {b}. (at docs/KBD-002.md)" in block, "a file name or an address was rewritten"
+    assert f"See docs/KBD-002.md, KBD-002.png, https://example.org/KBD-002 and {b}. (at `docs/KBD-002.md`)" in block, "a file name or an address was rewritten"
     assert f"| Stuck, see {per} and {b} |" in draft, "the flow table names a finding by an ID the reader cannot look up"
     assert f"The button of {per}." in draft and f"Other than {b}." in draft, "a persona hint or a coverage note kept the ID of the findings file"
     assert f"| {a} | KBD-001 |" in draft and f"| {per} | PER-screen-reader-001 |" in draft, "appendix C lost the IDs it is there to list"

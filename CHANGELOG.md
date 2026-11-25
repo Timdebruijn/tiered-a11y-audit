@@ -2,6 +2,13 @@
 
 Rounds of review and real runs, newest first. Each round changed what the report says, not only how it is phrased.
 
+## Unreleased
+
+Merged after 1.3.0 and not in a release yet.
+
+### Round 18 — what a re-audit of a Hugo site could not make the linter pass (2026-11-25)
+- A place the report prints itself goes in a code span (#54). The linter refuses a slash in running text unless the word looks like a path, and a folder has no file extension to go by. In that re-audit the fix line of a finding read "(at assets/css)" and the table of structural advice listed "layouts/_default", so both were reported as a slash to write out. Neither is text an agent wrote, so there was nothing to correct at the source and the report could not reach exit 0, which `SKILL.md` asks for before it is done. The renderer puts every value it prints as a place in backticks now: the fix line of a finding, the upstream and the accepted list, the rule and the selector of an accepted exception, the place of a structural advice entry, and the location column of appendix C. A value that already carries a span of its own is left as it is, which is how the agents are told to write their paths. The fingerprint of an earlier finding was the same case and has been in backticks since #43, where the report also started naming such a finding by the title it kept of it. The rule stays in the linter: a report has to be readable aloud, and writing it that way is the renderer's work. `test_render.py` renders a report whose places have no file extension, among them a resolved finding with the fingerprint `index-without-summary@content/projects`, and runs the linter over the finished `REPORT.md` for its exit code.
+
 ## 1.3.0 (2026-11-25)
 
 What the orchestrator of a real re-audit with 1.2.1 sent back, and the first scored run after it: twelve pull requests, 41 to 52. Scripts, instructions and graders changed. What concerns a running application is not measured, because both scored runs were static.
