@@ -71,9 +71,26 @@ def regex(pattern, path=REPORT, match=None):
     return {"type": "regex", "target": f"{{ source: file, path: {path} }}", "pattern": pattern, "flags": "i", **({"match": match} if match else {})}
 
 
+# The workspace as an argument: a path that ends in .a11y-audit, or a shell variable that stands alone, quoted or
+# not. An orchestrator that sets W=<repo>/.a11y-audit once and passes "$W" ran the script as much as one that
+# spells the path out, and the run of 25 November 2026 failed both graders below on exactly that.
+WORKSPACE = r"""[\\"']*(?:[^\s|;&]*\.a11y-audit[\\"'/]*|(?<=[\s"'])\$\{?\w+\}?(?:\\"|')?(?=[\s;&|)"]|$))"""
+CORE = ("screen-reader", "low-vision", "motor-voice", "cognitive")
+
+
 def ran(script, then=""):
-    """The script was started on a workspace, not merely named: no pipe or next command between the two."""
-    return {"type": "tool_used", "tool": "Bash", "input_match": rf"{script}\.py[^|;&]*\.a11y-audit{then}"}
+    """The script was started by Python on a workspace, not merely named: the workspace is an argument of the same
+    command, with no pipe or next command in between. The runner matches against the JSON of the tool's input, so a
+    double quote arrives with a backslash before it."""
+    return {"type": "tool_used", "tool": "Bash",
+            "input_match": rf"""python[\d.]*\s+[^\s|;&]*{script}\.py[\\"']*(?:\s+[^\s|;&]+)*?\s+{WORKSPACE}{then}"""}
+
+
+def persona_name(slug):
+    """The name a persona's file gives its person. The flow table of the report shows the name in the title of a
+    persona's report, and a persona takes that from its file: "Sanne", not "screen-reader"."""
+    title = (SKILL / "agents" / "personas" / f"{slug}-user.md").read_text(encoding="utf-8").splitlines()[0]
+    return re.match(r"# Persona: (\w+) ", title).group(1)
 
 
 OWNED = rf"### (?:{esc(L['upstream_h'])}|{esc(L['accepted_h'])}) \(\d+\)"
@@ -93,14 +110,15 @@ def full():
         "report-leaves-nothing-unwritten": regex(r"<!--", match="not_contains"),
         "report-opens-in-short-with-prose": regex(rf"^# [^\n]+\n+## {esc(L['short'])}\n+[^|#\s<-]"),
         "report-tables-have-at-most-four-columns": regex(r"(?:^|\n)\|(?:[^|\n]*\|){5,}[ \t]*(?=\n|$)", match="not_contains"),
+        # a row whose second cell holds the person's name, or the persona's slug where a report is titled by that
         "report-has-all-four-core-personas-in-the-matrix": regex(
             rf"\| {esc(L['flow'])} \| {esc(L['persona'])} \| {esc(L['result'])} \|" + "".join(
-                rf"(?=[\s\S]*\| {p} \|)" for p in ("screen-reader", "low-vision", "motor-voice", "cognitive"))),
+                rf"(?=[\s\S]*\n\|[^|\n]*\|[^|\n]*\b(?:{persona_name(p)}|{p})\b[^|\n]*\|)" for p in CORE)),
         # reflow, text spacing, content on hover, focus not obscured: a static run cannot pass all four
         "site-html-is-left-as-it-was": regex(r"<html>", path="site/index.html"),
         "site-css-is-left-as-it-was": regex(r"\*:focus \{ outline: none; \}", path="site/styles.css"),
         "ran-the-merge-script": ran("merge_findings"),
-        "ran-the-last-phase-check": ran("check_phase", r"\S* 6\b"),
+        "ran-the-last-phase-check": ran("check_phase", r"\s+6\b"),
         "tier-1-holds-the-missing-lang": regex(block("1", r"3\.1\.1", words=["lang"])),
         "tier-1-fixes-outline-none-with-focus-visible": regex(block("1", r"2\.4\.7", "styles.css", fix=["focus-visible"])),
         "tier-2-proposes-a-new-colour-for-the-muted-text": regex(NEW_COLOUR),
@@ -159,8 +177,9 @@ def finding(n, sc, file, tier, word, **over):
 MUTED = {"fg": "#9a9a9a", "bg": "#ffffff", "ratio": 2.81, "required": 4.5, "suggested_fg": "#767676", "suggested_ratio": 4.54, "delta_e_ok": 0.06}
 
 
-def audit(case: Path, findings, personas=("screen-reader", "low-vision", "motor-voice", "cognitive")):
-    """Copy the fixture, file the findings as the orchestrator's, and run merge, render, prose, render."""
+def audit(case: Path, findings, personas=CORE, title=persona_name, obstacle="none"):
+    """Copy the fixture, file the findings as the orchestrator's, and run merge, render, prose, render.
+    A persona's report is titled as a real one is: by the name of its person, then a dash and who that is."""
     root = Path(tempfile.mkdtemp())
     shutil.copytree(case / "files" / "site", root / "site")
     ws = root / WS
@@ -168,8 +187,8 @@ def audit(case: Path, findings, personas=("screen-reader", "low-vision", "motor-
     (ws / "personas").mkdir()
     (ws / "findings" / "orchestrator.json").write_text(json.dumps({"agent": "orchestrator", "findings": findings}), encoding="utf-8")
     for p in personas:
-        (ws / "personas" / f"{p}-user.md").write_text(f"# {p}\n\n## Flow results\n| Flow | Result | Feel | Main obstacle |\n|---|---|---|---|\n"
-                                                      "| Contact | completed with difficulty | slow | none |\n", encoding="utf-8")
+        (ws / "personas" / f"{p}-user.md").write_text(f"# {title(p)} — gesimuleerde gebruiker\n\n## Flow results\n| Flow | Result | Feel | Main obstacle |\n|---|---|---|---|\n"
+                                                      f"| Contact | completed with difficulty | slow | {obstacle} |\n", encoding="utf-8")
 
     def run(name, *args):
         r = subprocess.run([sys.executable, str(SCRIPTS / name), str(ws), *args], capture_output=True, text=True)
@@ -205,6 +224,18 @@ def test_a_script_counts_as_run_only_when_it_was_started_on_a_workspace():
     assert not merge.search(cmd("grep -c problems /p/scripts/merge_findings.py; ls site/.a11y-audit")), "naming the script and the workspace in one line is not running it"
     assert check.search(cmd('python3 "/p/scripts/check_phase.py" "site/.a11y-audit" 6')) and check.search(cmd("python3 /p/check_phase.py site/.a11y-audit 6 && echo ok"))
     assert not check.search(cmd("python3 /p/check_phase.py site/.a11y-audit 5 | head -n 6")) and not check.search(cmd("python3 /p/check_phase.py site/.a11y-audit 4"))
+    assert merge.search(cmd("python3.12 /p/merge_findings.py --ownership /p/o.md site/.a11y-audit")), "the workspace need not be the first argument"
+
+    # the workspace in a shell variable, as the run of 25 November 2026 wrote both commands
+    setup = 'S="/p/skill"; W=/tmp/e/site/.a11y-audit; '
+    assert merge.search(cmd(setup + 'python3 "$S"/scripts/merge_findings.py $W --ownership "$S"/references/wcag-ownership.md'))
+    assert merge.search(cmd(setup + 'python3 "$S"/scripts/merge_findings.py "${W}" --ownership "$S"/o.md 2>&1 | tail -3'))
+    assert check.search(cmd(setup + 'python3 "$S"/scripts/check_phase.py "$W" 6')) and check.search(cmd(setup + "python3 $S/scripts/check_phase.py $W 6; echo done"))
+    assert not check.search(cmd(setup + 'python3 "$S"/scripts/check_phase.py "$W" 5')) and not check.search(cmd(setup + 'python3 "$S"/scripts/check_phase.py "$W" 5 | head -n 6'))
+    # setting the variable is not running the script, and a variable that is part of a longer path is not the workspace
+    assert not merge.search(cmd(setup + 'cat "$S"/scripts/merge_findings.py')) and not merge.search(cmd(setup + 'grep -c problems $S/scripts/merge_findings.py $W'))
+    assert not merge.search(cmd(setup + 'python3 "$S"/scripts/merge_findings.py --ownership "$S"/references/wcag-ownership.md')), "the skill folder is not a workspace"
+    assert not merge.search(cmd(setup + 'python3 "$S"/scripts/merge_findings.py --help; ls $W'))
 
 
 def test_every_seeded_failure_is_found_by_its_own_grader_and_by_no_other():
@@ -262,9 +293,20 @@ def test_a_complete_audit_passes_every_grader_and_an_empty_one_fails_the_ones_ab
     with (same / REPORT).open("a", encoding="utf-8") as f:
         f.write("\n<!-- WRITE: [legal] only if raised -->\n")
     assert not passes(full()["report-leaves-nothing-unwritten"], same), "a report with a part still to write passes"
-    three = audit(FULL, seeded, personas=("screen-reader", "low-vision", "motor-voice"))
-    assert not passes(full()["report-has-all-four-core-personas-in-the-matrix"], three), "three of the four core personas pass"
+    matrix = full()["report-has-all-four-core-personas-in-the-matrix"]
+    # the report calls a persona by the name in the title of its file, which is the name of its person
+    report = (same / REPORT).read_text(encoding="utf-8")
+    assert all(f"| {persona_name(p)} | " in report for p in CORE) and "| screen-reader |" not in report, "the flow table no longer shows the person's name"
+    three = audit(FULL, seeded, personas=CORE[:3])
+    assert not passes(matrix, three), "three of the four core personas pass"
     shutil.rmtree(three)
+    # the fourth is only named in what stopped another: that is no row of its own
+    named = audit(FULL, seeded, personas=CORE[:3], obstacle=f"what {persona_name(CORE[3])} said too")
+    assert not passes(matrix, named), "a core persona that another one mentions counts as having reported"
+    shutil.rmtree(named)
+    by_slug = audit(FULL, seeded, title=lambda p: p)                        # a report titled by its slug, as earlier runs had
+    assert passes(matrix, by_slug), "a persona whose report is titled by its slug is not counted"
+    shutil.rmtree(by_slug)
     english = audit(FULL, [dict(f, description="The page does not say it.") for f in seeded])
     assert not passes(full()["findings-are-written-in-dutch"], english), "findings in English pass as Dutch"
     shutil.rmtree(english)
