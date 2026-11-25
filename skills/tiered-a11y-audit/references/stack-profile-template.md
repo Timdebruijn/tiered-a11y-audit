@@ -17,7 +17,7 @@ Write `.a11y-audit/stack-profile.md` in this shape. It is the single shared brie
 - Automated results: .a11y-audit/automated/ (per view: <slug>.json, .aria.yml, screenshots; states in states.json) | none
 - Scratch dir for helper scripts (has node_modules): <path> | none
 - Previous audit: .a11y-audit/previous/ | none
-- Prior accessibility claims in the repo (design docs, README, statement): <path and claim> | none — re-test, never trust
+- Prior accessibility claims in the repo (`ACCESSIBILITY.md`, design docs, README, statement): <path and claim; its stated scope, known limitations and exceptions> | none — re-test, never trust
 - Report language: <language> (every agent writes its prose in it; nothing is translated afterwards)
 - Legal context (only if the user raised it): <EN 301 549 / EAA / public sector / none>
 
