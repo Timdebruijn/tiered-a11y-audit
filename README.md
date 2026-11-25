@@ -32,7 +32,7 @@ Alongside the personas, a framework-maximizer looks for the single token, base c
 
 There are six modes: a full audit, a lean audit for a small interface, a mini audit for a handful of files without forms, a focused review of one component or pull request, a re-audit, and a mode that applies the fixes.
 
-The findings can be exported three ways: as SARIF 2.1.0, the Static Analysis Results Interchange Format that GitHub and GitLab code scanning read; as a draft conformance table in the style of an Accessibility Conformance Report, for whoever has to sign one; and as comma-separated values for a ticket system.
+The findings can be exported three ways: as SARIF 2.1.0, the Static Analysis Results Interchange Format that GitHub and GitLab code scanning read; as a draft conformance table in the style of an Accessibility Conformance Report, for whoever has to sign one; and as comma-separated values for a ticket system. For a project that has no document stating its own accessibility, the audit can also leave a draft of one in its workspace, an `ACCESSIBILITY.md` with what was covered, how many criteria are met and the most severe open problems. The commitment in it is left for the owner to write.
 
 ## Install
 
@@ -208,8 +208,8 @@ The next list gives every directory that matters, with what it holds.
 - `skills/tiered-a11y-audit/agents/experts/` holds the six lenses, the framework-maximizer, and the protocol they share.
 - `skills/tiered-a11y-audit/agents/personas/` holds the eight personas and the protocol they share.
 - `skills/tiered-a11y-audit/references/` holds the tiering rules, the finding schema, the criterion ownership table, the framework playbooks, the stack profile template, the report template, the tooling notes, and the report labels per language.
-- `skills/tiered-a11y-audit/scripts/` holds the preflight, the detector, the pattern scanner, the colour extractor, the contrast tool, the accessibility-tree digest, the runtime scan, the briefing builder, the phase check, the merge and coverage script, the renderer that writes the draft and assembles the report, the linter that checks it, the exporter, the grader for the evaluation fixture, nine self-checks that cover most of them, and one for the runtime scan.
-- `.github/workflows/self-checks.yml` runs the nine self-checks of the scripts, the one of the eval graders and the check of this file on every pull request, on Python 3.9 and on the current version. A third job installs Playwright and runs the self-check of the runtime scan in the Chrome of the runner. It calls no model and costs nothing.
+- `skills/tiered-a11y-audit/scripts/` holds the preflight, the detector, the pattern scanner, the colour extractor, the contrast tool, the accessibility-tree digest, the runtime scan, the briefing builder, the phase check, the merge and coverage script, the renderer that writes the draft and assembles the report, the linter that checks it, the exporter, the grader for the evaluation fixture, ten self-checks that cover most of them, and one for the runtime scan.
+- `.github/workflows/self-checks.yml` runs the ten self-checks of the scripts, the one of the eval graders and the check of this file on every pull request, on Python 3.9 and on the current version. A third job installs Playwright and runs the self-check of the runtime scan in the Chrome of the runner. It calls no model and costs nothing.
 - `evals/` holds the four test cases with their fixture sites, and `test_graders.py`, which defines the pattern graders of the two audit cases and checks them. It stays at the repository root, because that is where the evaluation runner looks.
 
 ## Contributing

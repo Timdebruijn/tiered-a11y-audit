@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Export the audit into formats other tools and people expect.
 
-    python3 export_findings.py <repo>/.a11y-audit --format sarif|acr|csv [--lang <code>] [--out <path>]
+    python3 export_findings.py <repo>/.a11y-audit --format sarif|acr|csv|accessibility-md [--lang <code>] [--out <path>]
 
 sarif  SARIF 2.1.0 (GitHub code scanning, GitLab, VS Code SARIF viewers): one result per finding with
        file/line, severity mapped to error/warning/note, the WCAG criterion as rule id, help URL.
@@ -9,6 +9,11 @@ acr    Conformance table in VPAT / Accessibility Conformance Report style, one r
        criterion from coverage.md: Supports / Partially Supports / Does Not Support / Not Applicable /
        Not Evaluated, with the finding IDs as remarks. A draft for the person who signs it, not a VPAT.
 csv    One row per finding for spreadsheets and ticket import.
+accessibility-md
+       A draft of an ACCESSIBILITY.md for a project that has none, in the report language: what the audit covered,
+       how many criteria are met, the most severe open problems, what was accepted and what is someone else's to
+       fix. What only the owner can say, the commitment and where to report a barrier, is left as a line that
+       says so. Written into the workspace as ACCESSIBILITY.draft.md, never into the repository.
 
 Pure standard library. Reads findings/_merged.json, coverage.md and report-ids.json (if present).
 """
@@ -16,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import datetime
 import io
 import json
 import re
@@ -123,6 +129,43 @@ def to_acr(ws, merged, ids, t):
     return "\n".join(out) + "\n"
 
 
+KNOWN_SHOWN = 15
+
+
+def to_accessibility_md(ws: Path, merged, t) -> str:
+    """A draft of the project's own accessibility document, from what the audit established and nothing else."""
+    L = t["statement"]
+    own = lambda what: f"*{L['owner'].format(what=what)}*"
+    counts = merged.get("coverage_counts") or {}
+    profile = ws / "stack-profile.md"
+    scope = re.search(r"(?m)^- Scope:[ \t]*(.+?)[ \t]*$", profile.read_text(encoding="utf-8", errors="replace")) if profile.is_file() else None
+    scope = scope.group(1) if scope and not re.search(r"<[^>]*>|…", scope.group(1)) else None      # a line still holding the template says nothing
+    out = [f"# {L['title']}", "", L["intro"].format(date=datetime.date.today().isoformat()), "",
+           f"## {L['commitment_h']}", "", own(L["commitment_todo"]), "",
+           f"## {L['scope_h']}", ""] + ([L["scope_p"].format(scope=scope), ""] if scope else []) + [own(L["scope_todo"]), "",
+           f"## {L['status_h']}", "",
+           L["status_p"].format(n=sum(counts.values()), met=counts.get("pass", 0), failed=counts.get("fail", 0), na=counts.get("n/a", 0),
+                                untested=counts.get("not-tested", 0)), "",
+           L["how_runtime" if (ws / "automated" / "summary.json").is_file() else "how_static"], ""]
+
+    def line(f):
+        sc = ", ".join("WCAG " + w["sc"] for w in f.get("wcag") or [] if isinstance(w, dict) and w.get("sc")) or L["best_practice"]
+        return f"- {str(f.get('title') or '').strip().rstrip('.')} ({sc}, {t['sev'].get(f.get('severity'), f.get('severity'))})."
+    by_owner = {"accepted": [], "upstream": [], "project": []}
+    for f in sorted(merged["findings"], key=lambda f: (SEV_RANK.get(f.get("severity"), 9), str(f.get("id")))):
+        by_owner.get((f.get("fix") or {}).get("ownership"), by_owner["project"]).append(f)
+    mine = by_owner["project"]
+    out += [f"## {L['known_h']}", "", L["known_p"].format(n=len(mine), shown=min(len(mine), KNOWN_SHOWN)) if mine else L["known_none"], ""]
+    out += [line(f) for f in mine[:KNOWN_SHOWN]] + ([""] if mine else [])
+    for key in ("accepted", "upstream"):
+        if by_owner[key]:
+            reason = lambda f: str(((f.get("fix") or {}).get("exception") or {}).get("reason") or (f.get("fix") or {}).get("summary") or "").strip()
+            out += [f"## {L[key + '_h']}", "", L[key + "_p"], ""]
+            out += [line(f) + (f" {reason(f)}" if key == "accepted" and reason(f) else "") for f in by_owner[key]] + [""]
+    out += [f"## {L['report_h']}", "", own(L["report_todo"]), ""]
+    return "\n".join(out)
+
+
 def to_csv(merged, ids):
     buf = io.StringIO()
     w = csv.writer(buf)
@@ -138,8 +181,8 @@ def to_csv(merged, ids):
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("workspace")
-    ap.add_argument("--format", required=True, choices=["sarif", "acr", "csv"])
-    ap.add_argument("--lang", default="en", help="language code for the conformance table; see labels.py")
+    ap.add_argument("--format", required=True, choices=["sarif", "acr", "csv", "accessibility-md"])
+    ap.add_argument("--lang", default="en", help="language code for the conformance table and the draft document; see labels.py")
     ap.add_argument("--out")
     a = ap.parse_args()
     ws = Path(a.workspace)
@@ -148,6 +191,8 @@ def main():
         text, default = json.dumps(to_sarif(merged, ids, "."), indent=2), "findings.sarif"
     elif a.format == "acr":
         text, default = to_acr(ws, merged, ids, load_labels(a.lang, ws)), "conformance-table.md"
+    elif a.format == "accessibility-md":
+        text, default = to_accessibility_md(ws, merged, load_labels(a.lang, ws)), "ACCESSIBILITY.draft.md"
     else:
         text, default = to_csv(merged, ids), "findings.csv"
     out = Path(a.out) if a.out else ws / default
