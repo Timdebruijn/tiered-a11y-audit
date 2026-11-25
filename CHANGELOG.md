@@ -2,9 +2,11 @@
 
 Rounds of review and real runs, newest first. Each round changed what the report says, not only how it is phrased.
 
-## Unreleased
+## 1.3.0 (2026-11-25)
 
-Merged after 1.2.1 and not in a release yet.
+What the orchestrator of a real re-audit with 1.2.1 sent back, and the first scored run after it: twelve pull requests, 41 to 52. Scripts, instructions and graders changed. What concerns a running application is not measured, because both scored runs were static.
+
+For whoever upgrades: a labels file in another language than English or Dutch that was translated before this release needs the new keys `decimal`, `delta_h.not_reported`, `lens`, `method_word` and `statement`, and the loader names what is missing. `build_briefs.py` takes the personas that run with `--personas`. In the summary of the runtime scan, a state that opens at its own viewport but not at another width is no longer `stateReached: false`.
 
 ### Round 17 — the first scored run after round 16 (2026-11-25)
 - Three graders of the lean audit case failed a run that had done what they ask (#50). The run of 25 November scored 0.90, 37 of 41, at 3 dollars 95; the themed site scored 1.00 at 2 dollars 26. `ran-the-merge-script` and `ran-the-last-phase-check` wanted `.a11y-audit` spelled out after the script name, and the orchestrator had set the workspace in a shell variable once and passed that: both scripts ran, the last phase check included. `report-has-all-four-core-personas-in-the-matrix` looked for the short names of the personas, while the flow table has shown the name in the title of a persona's report since #45, which is the name of its person. The self-check of the graders did not see that, because its persona reports were titled by their short name; they are titled as real ones now. The two graders on a script accept a shell variable that is a whole argument, and want the script to be run by Python; a folder whose name only starts with `.a11y-audit` is no workspace any more. The grader on the matrix takes the name from the persona's file, or the short name, in the persona column of a row of the flow table itself. All three pass on the report and the trace of that run, with the regular expressions of JavaScript that the runner uses, which makes it 40 of 41. The fourth failure stands: the base font size of 13 pixels was reported as a best practice without criterion 1.4.4.
