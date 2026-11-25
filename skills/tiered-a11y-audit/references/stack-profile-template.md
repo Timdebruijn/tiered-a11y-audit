@@ -10,6 +10,7 @@ Write `.a11y-audit/stack-profile.md` in this shape. It is the single shared brie
 - Mode: full | lean | mini | focused-review | re-audit (and why: project-owned UI files <n>, interactive widgets <n>, forms <yes/no>)
 - Writable directories (fix ownership): <e.g. layouts/, assets/css/, i18n/, hugo.toml>; off-limits: <themes/blowfish (submodule), per CLAUDE.md>; policy notes: <e.g. "no copying theme templates into layouts/" from docs/design.md>
 - Scope: <whole repo | apps/web only | routes /checkout/* | PR #123 diff>
+- Audience: <who uses this product and what they already know, e.g. "network administrators: protocol names are their daily words" | "the general public, on a phone">
 - Runtime: <URL> (started by the orchestrator with `<command>`, PID <n>, stop at the end) | <URL> (user-provided) | none — static analysis only
 - Runtime mutations: read-only | disposable instance, allowed actions: <…>
 - Browser tooling for agents: node + Playwright in the scratch dir | Playwright MCP | Chrome MCP | none

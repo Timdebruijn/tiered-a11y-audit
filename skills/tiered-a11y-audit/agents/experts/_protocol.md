@@ -46,6 +46,7 @@ Write your prose in the report language named in the stack profile: titles, desc
 
 - **1.3.3 Sensory Characteristics** is about *instructions* that rely on shape, colour, size, position or sound ("the green button on the right"). A pointer-only interaction ("drag to zoom") is 2.1.1 / 2.5.1 / 2.5.7, not 1.3.3.
 - **3.2.4 Consistent Identification** is about the *same function being labelled the same way* across pages. Help hidden in a `title` tooltip is 3.3.2 (instructions) and/or 1.4.13 / 4.1.2, not 3.2.4.
+- **3.2.3 Consistent Navigation** is about navigation that is repeated on several pages keeping its relative order. A tab bar that is cut off on a narrow screen is 1.4.10 (reflow); one that the keyboard cannot reach is 2.1.1.
 - **2.4.6 Headings and Labels** judges the *wording* of headings and labels that exist. Missing headings are 1.3.1 (visual heading not marked up) or best practice; missing labels are 3.3.2 / 4.1.2.
 - **4.1.3 Status Messages** applies only when focus does *not* move. An error that receives focus is 3.3.1; a dialog that opens is 4.1.2 / focus management.
 - **2.2.1 Timing Adjustable** is for time limits (sessions, timed input); content that moves, blinks or auto-updates is 2.2.2.

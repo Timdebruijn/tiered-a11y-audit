@@ -226,6 +226,23 @@ def test_phase_5_wants_the_personas_of_the_mode_and_a_merge_after_them():
     one(ws, "5", "no persona report from motor-voice-user, cognitive-user")
 
 
+def test_phase_5_wants_the_personas_the_profile_selects():
+    ws = workspace()
+    through_phase_3(ws)
+    profile = ws / "stack-profile.md"
+    profile.write_text(profile.read_text(encoding="utf-8") + "\n## Persona selection\n- Core: screen-reader, low-vision\n"
+                       "- Added: colour-blind because the charts carry meaning\n", encoding="utf-8")
+    script("build_briefs.py", HERE.parent, ws, "--mini")
+    through_phase_4(ws)
+    through_phase_5(ws)                                                        # the two a mini audit used to be held to
+    got = gaps(ws, "5")
+    assert len(got) == 1 and got[0].startswith("no persona report from colour-blind-user in personas/: the stack profile selects them"), got
+    (ws / "personas" / "colour-blind-user.md").write_text("# colour-blind-user\n\nWalked the key flows.\n", encoding="utf-8")
+    merge(ws)
+    assert gaps(ws, "5") == [], gaps(ws, "5")
+    assert not (ws / "briefs" / "deaf-user.md").exists() and gaps(ws, "3") == [], gaps(ws, "3")   # phase 3 asks for no brief that was not built
+
+
 def test_phase_6_wants_a_current_draft_and_a_report_that_passes_the_linter():
     ws = workspace()
     through_phase_3(ws)

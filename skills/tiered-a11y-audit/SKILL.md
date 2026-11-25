@@ -173,8 +173,8 @@ Say in the method section of the report that nobody was there to confirm these. 
    python3 "SKILL_DIR"/scripts/aria_digest.py <repo>/.a11y-audit/automated > <repo>/.a11y-audit/aria-digest.md
    ```
    Skim its nameless-controls column next to the inventory's summary table and the failing colour pairs from Phase 2. Together they are the stack profile's baseline headline.
-4. Complete `.a11y-audit/stack-profile.md`, started in Phase 2: mode, runtime (URL, how started), scratch dir, browser tooling available to agents, stack, leverage points, key flows, persona selection, automated-baseline headline, known limits. It is the single brief every subagent reads, so keep it tight, factual and full of paths.
-   The persona selection is decided here, so that Phase 5 only reads it. Full and lean: the four core personas, the others on their trigger. Mini: the screen reader persona plus one (low vision for content sites, motor and voice for tools), so in a mini audit replace the template's core line with those two.
+4. Complete `.a11y-audit/stack-profile.md`, started in Phase 2: mode, audience, runtime (URL, how started), scratch dir, browser tooling available to agents, stack, leverage points, key flows, persona selection, automated-baseline headline, known limits. The audience line is what keeps a persona from judging a tool for specialists as a stranger to their trade: say who uses the product and what they already know. It is the single brief every subagent reads, so keep it tight, factual and full of paths.
+   The persona selection is decided here, so that Phase 5 only reads it. Full and lean: the four core personas, the others on their trigger. Mini: the screen reader persona plus one (low vision for content sites, motor and voice for tools), so in a mini audit replace the template's core line with those two. Write each selected persona as an item of its own on the "Core" or "Added" line, as the template does: the briefs are built from those names, and a persona that is only mentioned in a sentence is not selected.
 
    | Persona file | Run when |
    |---|---|
@@ -190,7 +190,7 @@ Say in the method section of the report that nobody was there to confirm these. 
    ```
    python3 "SKILL_DIR"/scripts/build_briefs.py "SKILL_DIR" <repo>/.a11y-audit --playbook <sections> [--lean | --mini]
    ```
-   Each lens brief ends with the start of that agent's findings file: its name, its lenses and every criterion it owns, each still to be given a status. The framework-maximizer owns no criteria and gets none. Build the briefs again whenever the stack profile changes, because they carry a copy of it.
+   Each lens brief ends with the start of that agent's findings file: its name, its lenses and every criterion it owns, each still to be given a status. The framework-maximizer owns no criteria and gets none. Persona briefs are written for the personas the profile selects, and the command prints who that is: check that line against what you meant. Build the briefs again whenever the stack profile changes, because they carry a copy of it.
 6. Run the phase check for phase 3 before spawning anyone.
 
 ## Phase 4 — Experts, merge, dedupe, verify

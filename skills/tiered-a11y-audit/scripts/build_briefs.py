@@ -34,6 +34,30 @@ MINI = {"perceive": ["semantics-structure", "content-media", "visual-perception"
         "operate": ["keyboard-focus", "dynamic-content", "forms-input"]}
 PERSONAS = ["screen-reader-user", "low-vision-user", "motor-voice-user", "cognitive-user", "colour-blind-user",
             "deaf-user", "vestibular-user", "older-novice-user"]
+# what a persona needs of the tiering rules to propose a tier; who may edit what is the experts' field
+PERSONA_SKIPS_IN_TIERING = ("## Fix ownership (independent of tier and severity)",)
+
+
+def selected_personas(profile: str) -> list:
+    """The personas the stack profile selects, in the fixed order, or [] when it does not say.
+
+    Read from the "Persona selection" section, as the template writes it: "- Core: screen-reader, low-vision" and
+    "- Added: colour-blind because the charts carry meaning". A persona is selected when an item of such a list is
+    its name and nothing else, so a sentence that mentions one ("nothing here is a vestibular trigger") selects
+    nobody; what is left of the template's own placeholders, in angle brackets or in parentheses, is not read.
+    ponytail: a name wrapped in other words ("our usual colour-blind tester") is not seen. The build prints who it
+    selected, and that line is where a missing persona shows."""
+    section = re.search(r"(?ms)^## Persona selection[^\n]*\n(.*?)(?=^## |\Z)", profile)
+    if not section:
+        return []
+    items = set()
+    for line in section.group(1).splitlines():
+        line = re.sub(r"<[^>]*>|\([^)]*\)", " ", line).split(":", 1)[-1]
+        for chunk in line.split(";"):
+            for item in re.split(r",|\band\b|\bplus\b|[+&/|]", re.split(r"\bbecause\b", chunk, flags=re.I)[0], flags=re.I):
+                items.add(re.sub(r"^(the|a)\s+|[\s-]+(users?|personas?)$", "", item.strip(" \t-*•.").lower()).strip())
+    word = lambda p: re.escape(p[:-len("-user")]).replace(r"\-", "[- ]?").replace("colour", "colou?r")
+    return [p for p in PERSONAS if any(re.fullmatch(word(p), i) for i in items)]
 
 
 def playbook_sections(text: str, wanted):
@@ -149,6 +173,14 @@ def skeleton(brief: str, lenses: list, owners: dict) -> str:
             f'  "sc_coverage": {{\n{cov}\n  }},\n  "findings": []\n}}\n```')
 
 
+def only_section(text: str, heading: str, source: str) -> str:
+    """One section of a document: its heading line and everything up to the next heading of the same level."""
+    found = re.findall(rf"(?ms)^{re.escape(heading)}\n.*?(?=^## |\Z)", text)
+    if len(found) != 1:
+        sys.exit(f"build_briefs: {source} has {len(found)} sections {heading!r}, expected one; it was renamed, removed or repeated, update build_briefs.py")
+    return found[0].rstrip()
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("skill_dir")
@@ -162,6 +194,7 @@ def main():
     refs = sd / "references"
     schema, ownership = rd(refs / "finding-schema.md"), rd(refs / "wcag-ownership.md")
     tiering = without_sections(rd(refs / "tiering.md"), ORCHESTRATOR_ONLY, "tiering.md")
+    persona_tiering = without_sections(tiering, PERSONA_SKIPS_IN_TIERING, "tiering.md")
     lens_schema = without_fields(schema, MAXIMIZER_FIELDS, "finding-schema.md")
     persona_schema = without_fields(schema, MAXIMIZER_FIELDS + EXPERT_FILE_FIELDS, "finding-schema.md")
     profile = rd(ws / "stack-profile.md") if (ws / "stack-profile.md").exists() else "(stack profile missing)"
@@ -175,6 +208,8 @@ def main():
     out.mkdir(exist_ok=True)
     expert_proto = rd(sd / "agents" / "experts" / "_protocol.md")
     persona_proto = rd(sd / "agents" / "personas" / "_protocol.md")
+    # a persona cites criteria too; the list of the ones that are cited wrongly is kept in one place, with the experts
+    misapplied = only_section(expert_proto, "## Commonly misapplied criteria", "agents/experts/_protocol.md")
     agents = MINI if a.mini else LEAN if a.lean else {e: [e] for e in EXPERTS}
     owners = parse_ownership(refs / "wcag-ownership.md")
     homeless = sorted(sc for sc, meta in owners.items() if not any(meta["owner"] in lenses for lenses in agents.values()))
@@ -201,13 +236,22 @@ def main():
         "# Briefing: framework-maximizer", expert_proto, rd(sd / "agents" / "experts" / "framework-maximizer.md"),
         schema, tiering, own_rows(ownership, [], owners), "# Stack profile\n\n" + profile + extras, "# Framework playbook (relevant sections)\n\n" + pb],
         ["framework-maximizer"]), encoding="utf-8")
+    # Which personas run was decided in the profile. A brief for one that does not run is a file somebody may spawn.
+    picked = selected_personas(profile)
+    personas = picked or PERSONAS
     for p in PERSONAS:
+        if p not in personas:
+            (out / f"{p}.md").unlink(missing_ok=True)           # left by an earlier build with a wider selection
+            continue
         (out / f"{p}.md").write_text("\n\n---\n\n".join([
-            f"# Briefing: {p}", persona_proto, rd(sd / "agents" / "personas" / f"{p}.md"), persona_schema,
+            f"# Briefing: {p}", persona_proto, rd(sd / "agents" / "personas" / f"{p}.md"), persona_schema, persona_tiering, misapplied,
             "# Stack profile\n\n" + profile + extras]), encoding="utf-8")
     (out / "_agents.json").write_text(json.dumps({"mode": "mini" if a.mini else "lean" if a.lean else "full", "experts": agents,
-                                                  "maximizer": "framework-maximizer", "personas": PERSONAS}, indent=2), encoding="utf-8")
-    print(f"briefs written to {out} ({len(agents)} expert, 1 maximizer, {len(PERSONAS)} persona); playbook sections {sorted(wanted)}")
+                                                  "maximizer": "framework-maximizer", "personas": personas,
+                                                  "personas_selected": bool(picked)}, indent=2), encoding="utf-8")
+    print(f"briefs written to {out} ({len(agents)} expert, 1 maximizer, {len(personas)} persona); playbook sections {sorted(wanted)}")
+    print("personas, as the stack profile selects them: " + ", ".join(personas) if picked else
+          "the stack profile has no persona selection that names one: a brief for each of the eight")
     return 0
 
 

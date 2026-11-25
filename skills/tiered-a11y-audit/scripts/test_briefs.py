@@ -17,13 +17,13 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 SKILL = HERE.parent
 sys.path.insert(0, str(HERE))
-from build_briefs import own_rows, without_fields, without_sections  # noqa: E402
+from build_briefs import PERSONAS, own_rows, selected_personas, without_fields, without_sections  # noqa: E402
 ROW = re.compile(r"^\| (\d\.\d\.\d+) \|", re.M)
 
 
-def build(*flags, skill=SKILL):
-    ws = Path(tempfile.mkdtemp())
-    (ws / "stack-profile.md").write_text("- Mode: test\n", encoding="utf-8")
+def build(*flags, skill=SKILL, profile="- Mode: test\n", ws=None):
+    ws = ws or Path(tempfile.mkdtemp())
+    (ws / "stack-profile.md").write_text(profile, encoding="utf-8")
     r = subprocess.run([sys.executable, str(HERE / "build_briefs.py"), str(skill), str(ws), *flags], capture_output=True, text=True)
     return r, ws / "briefs"
 
@@ -105,6 +105,46 @@ def test_a_persona_gets_the_fields_it_writes_and_not_the_expert_file_rules():
     for needed in ("- `id`", "- `instances`", "- `affected_users`", "best_practice_only", "- `fingerprint`", "- `visual_impact`", "- `evidence`", "- `wcag`", "- `severity`", "- `proposed_tier`", "- `fix.location`",
                    "- `effort`", "- `confidence`", "- `verify`", "Contrast findings additionally include"):
         assert needed in text, f"persona brief lost: {needed}"
+
+
+def test_the_persona_briefs_follow_the_selection_of_the_profile():
+    selection = ("# Stack profile\n\n## Persona selection\n- Core: screen-reader, low-vision   (mini audit: screen-reader plus <low-vision | motor-voice> only)\n"
+                 "- Added: Colour blind because the charts carry meaning; none of it is a vestibular trigger, because nothing moves\n\n"
+                 "## Known limits of this run\n- No audio, so no deaf persona.\n")
+    want = ["screen-reader-user", "low-vision-user", "colour-blind-user"]
+    assert selected_personas(selection) == want, selected_personas(selection)
+    r, briefs = build(profile=selection)
+    manifest = json.loads((briefs / "_agents.json").read_text(encoding="utf-8"))
+    assert manifest["personas"] == want and manifest["personas_selected"] is True, manifest
+    assert sorted(p.stem for p in briefs.glob("*-user.md")) == sorted(want), "a brief for a persona that does not run is one somebody may spawn"
+    assert "3 persona" in r.stdout and "as the stack profile selects them: screen-reader-user, low-vision-user, colour-blind-user" in r.stdout, r.stdout
+
+    # a selection made narrower afterwards takes the brief of the persona that fell out with it
+    r, briefs = build(profile=selection.replace("- Added: Colour blind because", "- Added: none, because"), ws=briefs.parent)
+    assert sorted(p.stem for p in briefs.glob("*-user.md")) == ["low-vision-user", "screen-reader-user"], sorted(briefs.glob("*-user.md"))
+
+    # no selection, or the template's line with only its placeholder left: nothing is guessed
+    for profile in ("- Mode: test\n", "## Persona selection\n- Added: <colour-blind | deaf | vestibular | older-novice> because <trigger> | none\n"):
+        r, briefs = build(profile=profile)
+        manifest = json.loads((briefs / "_agents.json").read_text(encoding="utf-8"))
+        assert manifest["personas"] == PERSONAS and manifest["personas_selected"] is False, manifest
+        assert len(list(briefs.glob("*-user.md"))) == 8 and "no persona selection that names one" in r.stdout, r.stdout
+    assert selected_personas("## Persona selection\n- Core: screen reader, color-blind, deaf-blind, cognitively\n") == ["screen-reader-user", "colour-blind-user"]
+    assert selected_personas("## Persona selection\n- The screen reader user and the motor-voice persona; deaf users.\n- vestibular-user\n") == [
+        "screen-reader-user", "motor-voice-user", "deaf-user", "vestibular-user"]
+
+
+def test_a_persona_gets_the_tiering_rules_it_proposes_a_tier_by():
+    r, briefs = build()
+    p, lens = brief(briefs, "cognitive-user"), brief(briefs, "forms-input")
+    for heading in ("## The decision test", "## Tier 3 — The road to a 10", "## Edge cases", "## Severity (independent of tier)"):
+        assert heading in p, f"a persona proposes a tier and a severity without {heading}"
+    assert "## Fix ownership" not in p and "## Scoring rubric" not in p and "### Persona verdicts set a floor" not in p
+    assert "## Fix ownership" in lens, "the cut for personas must not reach the experts"
+    # a persona cites criteria too, so it gets the list of the ones that are cited wrongly, once, and nothing else of the experts' protocol
+    assert p.count("## Commonly misapplied criteria") == 1 and "**3.2.3 Consistent Navigation**" in p and "**4.1.3 Status Messages**" in p
+    assert "## Fix ownership" not in p.split("## Commonly misapplied criteria")[1].split("# Stack profile")[0]
+    assert "## Common false positives" not in p and "Own your criteria" not in p
 
 
 def test_a_cut_ends_where_the_section_or_the_field_ends():
