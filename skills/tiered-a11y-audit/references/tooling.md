@@ -4,7 +4,7 @@ Automated tools find only a minority of WCAG issues (missing names, contrast of 
 
 ## Order of preference
 
-1. **What the project already has.** Run its lint script and tests first. Collect a11y-rule output (and count suppressions — `detect_stack.py` lists them).
+1. **What the project already has.** Run its lint script and tests first. Collect a11y-rule output (and count suppressions — `detect_stack.py` lists them). The detector also names the documents in which the project states its own accessibility, by file name (`ACCESSIBILITY.md`, `a11y.md`, a statement, in a handful of languages) at the root or one folder down, each with its first headings; a document of a theme or a dependency is not the project's and is left out.
 2. **Framework compilers/dev tools.** `svelte-check` (a11y warnings), Astro dev-toolbar audit, `ng lint` with template a11y rules, `ember-template-lint`.
 3. **Runtime scan** (needs a running app): `scripts/axe_scan.mjs`.
 4. **Built output** for static sites: `pa11y-ci` or the axe scan against a local static server; `html-validate` for structure.

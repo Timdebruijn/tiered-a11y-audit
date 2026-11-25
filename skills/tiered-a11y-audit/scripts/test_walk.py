@@ -214,6 +214,39 @@ def test_a_site_generator_or_a_tool_in_a_corner_is_no_backend():
             assert ("A backend may sit beside" in run("detect_stack.py", root)) is named, sorted(files)
 
 
+def test_the_projects_own_accessibility_documents_are_named_with_their_sections():
+    import json
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d)
+        make_app(root)
+        assert "Accessibility documents" not in run("detect_stack.py", root), "a project without such a document has no such list"
+        files = {"ACCESSIBILITY.md": "# Accessibility\n\ntext\n\n## Scope\n## Conformance Status ##\n### Known Limitations\n#### Too deep\n#not a heading\n",
+                 "docs/toegankelijkheidsverklaring.md": "geen koppen\n",
+                 ".github/a11y.txt": "# Notes\n",
+                 "docs/Barrierefreiheit Erklärung.rst": "x",
+                 "docs/guide/accessibility.md": "# Too deep to be looked for\n",           # two folders down
+                 "src/pages/accessibility.md": "# A page of the product\n",
+                 "accessibility.html": "<html><body>a page, not a document</body></html>",
+                 "accessibility-report.json": "{}",
+                 "inaccessibility.md": "# Another word\n",
+                 "themes/paper/ACCESSIBILITY.md": "# Of the theme, not of the project\n",
+                 "vendor/ACCESSIBILITY.md": "# Of vendored code, one folder down like docs\n",
+                 "node_modules/pkg/ACCESSIBILITY.md": "# Of a dependency\n"}
+        for rel, text in files.items():
+            (root / rel).parent.mkdir(parents=True, exist_ok=True)
+            (root / rel).write_text(text, encoding="utf-8")
+        out = run("detect_stack.py", root)
+        listed = out.split("## Accessibility documents of the project")[1].split("\n\n")[0].splitlines()[1:]
+        assert listed == ["- .github/a11y.txt — sections: Notes",
+                          "- ACCESSIBILITY.md — sections: Accessibility; Scope; Conformance Status; Known Limitations",
+                          "- docs/Barrierefreiheit Erklärung.rst",
+                          "- docs/toegankelijkheidsverklaring.md"], listed                       # in a fixed order, on every system
+        hint = next(l for l in out.splitlines() if l.startswith("- The project documents its own accessibility in"))
+        assert ".github/a11y.txt, ACCESSIBILITY.md, docs/Barrierefreiheit Erklärung.rst, docs/toegankelijkheidsverklaring.md:" in hint and "re-measure" in hint
+        docs = json.loads(run("detect_stack.py", root, "--json"))["a11y_docs"]
+        assert [x["path"] for x in docs] == [l[2:].split(" — ")[0] for l in listed] and docs[3]["headings"] == [], docs
+
+
 def test_a_large_file_full_of_half_tags_does_not_stall_the_detector():
     import time
     with tempfile.TemporaryDirectory() as d:

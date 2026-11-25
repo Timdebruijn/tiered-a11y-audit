@@ -34,6 +34,13 @@ SSG_CONFIGS = ("hugo.toml", "hugo.yaml", "hugo.json", "_config.yml", ".eleventy.
 GENERATED_ONLY_BY_SSG = {"public", "site"}
 
 
+# A document in which the project states its own accessibility: ACCESSIBILITY.md (after SECURITY.md), a11y.md, a
+# statement. By its name, in the languages listed; add a language by adding a word. Documents only: a page of the
+# product with such a name is interface, and the scanners count it as that.
+A11Y_DOC = re.compile(r"(?i)^(?:accessibility|a11y|toegankelijkheid|barrierefreiheit|accessibilit[eé]|accesibilidad|accessibilit[aà])"
+                      r"[\w .-]*\.(?:md|mdx|markdown|txt|rst|adoc)$")
+
+
 def ssg_generates_public(root):
     """True when a static-site generator in this repo writes into public/ or site/."""
     # ponytail: marker sniff, not a full SSG probe; add generators as they turn up.
@@ -321,7 +328,7 @@ def analyse(root: Path, max_files: int) -> dict:
         "file_types": Counter(), "suppressions": Counter(), "suppression_examples": [],
         "signals": {k: 0 for k in A11Y_SIGNALS}, "signal_examples": defaultdict(list),
         "lint_configs": [], "ci_files": [], "other_ecosystems": [], "embedded_html": [], "signal_files_scanned": 0,
-        "infra_templates": Counter(), "csp": [],
+        "infra_templates": Counter(), "csp": [], "a11y_docs": [],
     }
     for p in iter_files(root, max_files):
         size = file_size(p)
@@ -333,6 +340,10 @@ def analyse(root: Path, max_files: int) -> dict:
         where = classify_path(rel, build, vendor)
         if where == "build":
             continue
+        # ponytail: at the root or one folder down (docs/, .github/), where such a file is kept; deeper ones are not looked for
+        if where == "project" and rel.count("/") <= 1 and A11Y_DOC.match(name):
+            heads = [h.strip() for h in re.findall(r"(?m)^#{1,3} +(.+?)[ #]*$", read_text(p, 60_000))]
+            result["a11y_docs"].append({"path": rel, "headings": heads[:12]})
         if name == "package.json" and where == "vendor":
             try:
                 data = json.loads(read_text(p))
@@ -457,6 +468,7 @@ def finalise(r: dict) -> dict:
     r["file_types"] = dict(r["file_types"].most_common())
     r["infra_templates"] = dict(r["infra_templates"].most_common())
     r["csp"] = sorted(set(r["csp"]))[:10]
+    r["a11y_docs"] = sorted(r["a11y_docs"], key=lambda d: d["path"])
     r["suppressions"] = dict(r["suppressions"].most_common())
     r["signal_examples"] = dict(r["signal_examples"])
     r["other_ecosystems"] = sorted(set(r["other_ecosystems"]))
@@ -523,6 +535,10 @@ def finalise(r: dict) -> dict:
         hints.append("No accessibility lint/test tooling detected.")
     if r["suppressions"]:
         hints.append(f"{sum(r['suppressions'].values())} suppressed a11y lint warnings found.")
+    if r["a11y_docs"]:
+        hints.append(f"The project documents its own accessibility in {', '.join(d['path'] for d in r['a11y_docs'])}: read it before the stack profile "
+                     "is written. What it says about conformance is a claim to re-measure; what it says about scope, known limitations "
+                     "and exceptions belongs in the profile, with the path.")
     r["hints"] = hints
     return r
 
@@ -573,6 +589,10 @@ def print_human(r: dict) -> None:
     print(", ".join(f"{k}: {v}" for k, v in list(r["file_types"].items())[:15]) or "(none)")
     if r["infra_templates"]:
         print("Not counted (infra or vendored): " + ", ".join(f"{k}: {v}" for k, v in r["infra_templates"].items()))
+    if r["a11y_docs"]:
+        print("\n## Accessibility documents of the project (its own claims: re-measure them, never take them over)")
+        for d in r["a11y_docs"]:
+            print(f"- {d['path']}" + (f" — sections: {'; '.join(d['headings'])}" if d["headings"] else ""))
     if r["csp"]:
         print("\n## Content-Security-Policy found in: " + ", ".join(r["csp"]))
     if r["embedded_html"]:
