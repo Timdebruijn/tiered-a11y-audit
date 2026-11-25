@@ -123,6 +123,7 @@ python3 "SKILL_DIR"/scripts/build_briefs.py "SKILL_DIR" <repo>/.a11y-audit --pla
 python3 "SKILL_DIR"/scripts/export_findings.py <repo>/.a11y-audit --format sarif          # GitHub/GitLab code scanning
 python3 "SKILL_DIR"/scripts/export_findings.py <repo>/.a11y-audit --format acr --lang nl  # draft conformance table
 python3 "SKILL_DIR"/scripts/export_findings.py <repo>/.a11y-audit --format csv            # tickets, spreadsheets
+python3 "SKILL_DIR"/scripts/export_findings.py <repo>/.a11y-audit --format accessibility-md --lang nl   # draft ACCESSIBILITY.md, into the workspace
 python3 "SKILL_DIR"/scripts/grade_findings.py <repo>/.a11y-audit/findings/_merged.json <ground-truth.json>
 ```
 

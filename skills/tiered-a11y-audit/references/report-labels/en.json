@@ -174,5 +174,32 @@
     "not_evaluated": "Not Evaluated",
     "intro": "Draft conformance table generated from the audit's coverage matrix. 'Partially Supports' means every related finding is moderate or minor; 'Does Not Support' means at least one serious or worse. Review before using it in a VPAT, ACR or accessibility statement.",
     "title": "Conformance table (draft)"
+  },
+  "statement": {
+    "title": "Accessibility (draft)",
+    "intro": "A draft, written on {date} from an accessibility audit of this project. It is not a commitment and not a legal accessibility statement. The parts marked \"For the owner\" are for the owner to write, and every line needs checking before this goes into the repository as ACCESSIBILITY.md.",
+    "owner": "For the owner: {what}",
+    "commitment_h": "Commitment",
+    "commitment_todo": "the standard this project aims for, who is responsible for it, and since when.",
+    "scope_h": "Scope",
+    "scope_p": "The audit covered, in the words of its own notes: {scope}",
+    "scope_todo": "what belongs to the project and what does not, such as content of third parties.",
+    "status_h": "Conformance status",
+    "status_p": "Measured against the {n} success criteria of WCAG 2.2 at level A and AA: {met} met, {failed} not met, {na} not applicable, {untested} not tested. Not tested does not mean met.",
+    "how_static": "This comes from an audit by AI agents that read the code, with simulated users. No automated scan of the running application was part of it, and it was not tested with people with disabilities.",
+    "how_runtime": "This comes from an audit by AI agents that read the code, with an automated scan of the running application and simulated users. It was not tested with people with disabilities.",
+    "known_h": "Known limitations",
+    "known_p": "The audit found {n} problems against a WCAG criterion that are this project's to fix, not counting what it suspected and could not verify. The {shown} most severe follow. The audit report has every one with its fix, and its remarks on best practice.",
+    "known_none": "The audit found no problem against a WCAG criterion that is this project's to fix.",
+    "best_practice": "best practice",
+    "accepted_h": "Exceptions",
+    "accepted_p": "Accepted as they are for now, each with its reason.",
+    "upstream_h": "Outside this project",
+    "upstream_p": "Found in code that this project does not maintain. The fix belongs with its maintainer.",
+    "report_h": "Reporting a barrier",
+    "report_todo": "how someone reports a barrier, and how soon they hear back.",
+    "limits": "An audit like this one finds part of the problems, not all of them, and what it found is from {date}: where the code has changed since, this no longer describes it.",
+    "status_none": "How many criteria are met was not established.",
+    "more": "And {n} more, in the audit report."
   }
 }
