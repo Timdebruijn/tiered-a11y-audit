@@ -573,6 +573,85 @@ def test_a_note_for_another_lens_is_listed_until_a_finding_covers_it():
         assert "cross-lens" not in r.stdout and "Cross-lens" not in (ws / "findings" / "_merged.md").read_text(encoding="utf-8")
 
 
+def test_the_maximizer_filing_what_another_finding_has_is_asked_about():
+    with tempfile.TemporaryDirectory() as d:
+        ws = claims_workspace(d, [finding("ORC-001")])                       # 2.1.1 in src/page.html
+        other = [{"sc": "4.1.2", "name": "Name, Role, Value", "level": "A"}]
+        fwk = lambda fid, **over: finding(fid, **dict({"fingerprint": f"{fid.lower()}@src/page.html"}, **over))
+        tooling = fwk("FWK-005", kind="leverage", wcag=[], title="No lint layer",          # fails no criterion, fixes nothing yet
+                      leverage={"finding_ids": [], "note": "Keeps it from coming back."})
+        mx = ws / "findings" / "framework-maximizer.json"
+        nameless = fwk("FWK-006"); del nameless["id"]                         # the merge names it after its file, not FWK
+        mx.write_text(json.dumps({"agent": "framework-maximizer", "findings": [
+            fwk("FWK-001"),                                                   # the same criterion in the same file
+            fwk("FWK-002", wcag=other),                                       # the file, another criterion
+            fwk("FWK-003", kind="leverage", leverage={"finding_ids": ["ORC-001"]}),
+            fwk("FWK-004"), tooling, nameless]}), encoding="utf-8")           # a second one on that criterion and file
+        # a lens cannot get a defect past the criterion check by calling it a leverage entry
+        (ws / "findings" / "content-media.json").write_text(json.dumps({"agent": "content-media", "findings": [
+            finding("CNT-001", kind="leverage", wcag=[], fingerprint="cnt-001@src/page.html")]}), encoding="utf-8")
+        r = merge(ws)
+        merged = json.loads((ws / "findings" / "_merged.json").read_text(encoding="utf-8"))
+        asked = [p for p in merged["problems"] if "the framework-maximizer filed" in p]
+        assert sorted(p.split(":")[0] for p in asked) == ["FRA-x06", "FWK-001", "FWK-004"], merged["problems"]
+        assert all("that ORC-001 already has" in p for p in asked), asked                       # its own kind is not a twin
+        assert sorted(f["id"] for f in merged["findings"]) == ["FRA-x06", "FWK-001", "FWK-002", "FWK-004", "ORC-001"], merged["findings"]
+        assert [(e["id"], e["resolves"]) for e in merged["leverage_entries"]] == [("FWK-003", ["ORC-001"]), ("CNT-001", []), ("FWK-005", [])]
+        assert [p for p in merged["problems"] if "no WCAG criterion" in p] == [
+            "CNT-001: no WCAG criterion and not marked best_practice_only; cite one or set the marker"], merged["problems"]
+
+        # named a duplicate, or made a leverage entry: nothing is left to ask
+        (ws / "findings" / "_dedupe.json").write_text(json.dumps({"ORC-001": ["FWK-001"]}), encoding="utf-8")
+        data = json.loads(mx.read_text(encoding="utf-8"))
+        data["findings"][3].update(kind="leverage", leverage={"finding_ids": ["ORC-001"]})
+        moved = data["findings"].pop()                                        # another problem after all: the orchestrator's now
+        mx.write_text(json.dumps(data), encoding="utf-8")
+        orc = ws / "findings" / "orchestrator.json"
+        mine = json.loads(orc.read_text(encoding="utf-8"))
+        mine["findings"].append(dict(moved, id="ORC-002"))
+        orc.write_text(json.dumps(mine), encoding="utf-8")
+        merge(ws)
+        merged = json.loads((ws / "findings" / "_merged.json").read_text(encoding="utf-8"))
+        assert not [p for p in merged["problems"] if "the framework-maximizer filed" in p], merged["problems"]
+        assert sorted(f["id"] for f in merged["findings"]) == ["FWK-002", "ORC-001", "ORC-002"], [f["id"] for f in merged["findings"]]
+
+    with tempfile.TemporaryDirectory() as d:                                 # an accepted exception is nobody's finding to repeat
+        ws = claims_workspace(d, [finding("ORC-001", fix={"ownership": "accepted", "summary": "Left.", "exception": {"reason": "By design."}})])
+        (ws / "findings" / "framework-maximizer.json").write_text(json.dumps({"agent": "framework-maximizer", "findings": [
+            finding("FWK-001", fingerprint="fwk-001@src/page.html")]}), encoding="utf-8")
+        merge(ws)
+        merged = json.loads((ws / "findings" / "_merged.json").read_text(encoding="utf-8"))
+        assert not [p for p in merged["problems"] if "the framework-maximizer filed" in p], merged["problems"]
+
+
+def test_a_lens_that_stayed_out_of_a_running_app_is_named():
+    lens = lambda name, method=None, lenses=None: dict({"agent": name, "findings": []}, **({"lenses": lenses} if lenses else {}),
+                                                       **({"coverage": {"method": method}} if method else {}))
+    files = {"forms-input.json": lens("forms-input", "static"), "keyboard-focus.json": lens("keyboard-focus", "both"),
+             "visual-perception.json": lens("visual-perception", "Static + Runtime"), "dynamic-content.json": lens("dynamic-content"),
+             "structure-content.json": lens("structure-content", "static", ["semantics-structure", "content-media"]),
+             "operate.json": lens("operate", "static", ["keyboard-focus", "dynamic-content", "forms-input"]),
+             "bad-coverage.json": dict(lens("bad-coverage", lenses=["keyboard-focus"]), coverage="static")}   # not an object
+    with tempfile.TemporaryDirectory() as d:
+        ws = workspace(d, files)
+        r = merge(ws)                                                         # no scan ran: nobody could have used a runtime
+        assert "static-only" not in r.stdout and json.loads((ws / "findings" / "_merged.json").read_text())["static_only_lenses"] == []
+        (ws / "automated").mkdir()
+        (ws / "automated" / "summary.json").write_text("[]", encoding="utf-8")
+        r = merge(ws)
+        assert r.returncode == 0, r.stderr
+        assert r.stdout.strip().endswith("; 4 lenses static-only with a runtime there"), r.stdout
+        named = json.loads((ws / "findings" / "_merged.json").read_text(encoding="utf-8"))["static_only_lenses"]
+        assert [(n["agent"], n["method"]) for n in named] == [("bad-coverage", None), ("dynamic-content", None),
+                                                              ("forms-input", "static"), ("operate", "static")], named
+        assert named[3]["lenses"] == ["dynamic-content", "forms-input", "keyboard-focus"], named[3]
+        md = (ws / "findings" / "_merged.md").read_text(encoding="utf-8")
+        assert "## Worked from the code only, with a runtime there (4)" in md
+        assert "- forms-input (forms-input): coverage.method is static" in md
+        assert "- operate (dynamic-content, forms-input, keyboard-focus): coverage.method is static" in md
+        assert "- dynamic-content (dynamic-content): coverage.method is not given" in md
+
+
 def test_a_coverage_reason_is_kept_under_either_key():
     with tempfile.TemporaryDirectory() as d:
         ws = workspace(d, {"keyboard-focus.json": {"agent": "keyboard-focus", "lenses": ["keyboard-focus"], "findings": [], "sc_coverage": {

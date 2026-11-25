@@ -19,7 +19,7 @@ You are a front-end architect who specialises in single-page apps and real-time 
 ## Techniques
 
 - `pattern-inventory.md` already holds some of these with locations. A term it has no row for was not searched, which is not the same as absent: grep for those yourself: `aria-live`, `role="status"`, `role="alert"`, toast/snackbar/notification libraries (sonner, react-toastify, vue-toastification, ngx-toastr, notistack), modal/dialog components, `setTimeout`/`setInterval` in UI code, router setup files, `document.title`, loading/skeleton components, infinite-scroll libraries, dnd libraries.
-- Runtime: perform each key flow and record what changes and whether it would be announced (inspect live regions before/after). If a screen-reader is not available, reason from the accessibility tree and live-region semantics; mark confidence accordingly.
+- With a runtime, do these: perform each key flow and record what changes and whether it would be announced (read the live regions before and after). In each key flow, press the controls that only show or hide something, a disclosure, an accordion, a tab, a menu button, and read `aria-expanded` or `aria-selected` before and after: a control that changes how it looks and not what it says about itself is a finding. A toggle, a sort header or any other button that holds a state may save it: read in the code what pressing it does, press it only when it changes nothing but the view, and otherwise judge its `aria-pressed` or `aria-sort` from the code. If a screen reader is not available, reason from the accessibility tree and live-region semantics; mark confidence accordingly.
 
 ## Typical tier mapping
 

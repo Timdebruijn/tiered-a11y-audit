@@ -136,6 +136,21 @@ def tiers_of(f: dict):
             TIER_WORD.get(pt) if isinstance(pt, (str, int)) else None)
 
 
+# the lenses whose file has a "With a runtime" list: checks that reading code does not answer
+RUNTIME_LENSES = {"keyboard-focus", "visual-perception", "forms-input", "dynamic-content"}
+
+
+def cites(f: dict, sc, path: str) -> bool:
+    """True when the finding cites this criterion with evidence in this file."""
+    return (any(isinstance(w, dict) and str(w.get("sc")) == str(sc) for w in f.get("wcag") or [])
+            and any(isinstance(e, dict) and str(e.get("file") or "").removeprefix("./") == path for e in f.get("evidence") or []))
+
+
+def from_maximizer(f: dict) -> bool:
+    # by its file, and by the prefix its brief gives it: an entry without an ID gets one made from the file name
+    return f.get("agent") == "framework-maximizer" or str(f.get("id")).startswith("FWK")
+
+
 class Log(list):
     """What the merge reports back. append() is for what needs a decision from the orchestrator: content was
     lost, a claim does not hold, two fields contradict each other, or a value had to be guessed. note() is for
@@ -246,7 +261,8 @@ def verify_claims(f: dict, owners: dict, repo: Path, problems: Log) -> None:
         if not f["wcag"] and f.get("best_practice_only") is not True:
             f["best_practice_only"] = True
             problems.note(f"{fid}: a persona finding without a level A or AA criterion; kept as an observation outside the coverage matrix")
-    if not f["wcag"] and f.get("best_practice_only") is not True:
+    # a leverage entry of the maximizer is a place to fix things, not a finding: a lint layer or a CI job fails no criterion
+    if not f["wcag"] and f.get("best_practice_only") is not True and not (f.get("kind") == "leverage" and from_maximizer(f)):
         problems.append(f"{fid}: no WCAG criterion and not marked best_practice_only; cite one or set the marker")
 
     # Evidence: the file, the lines and the snippet have to exist. URL-and-selector evidence is runtime, not checked.
@@ -790,14 +806,38 @@ def main():
     for n in cross_notes:
         path = re.split(r"[:\s(]", str(n.get("location") or "").strip())[0].removeprefix("./")
         n["filed_as"] = [f["id"] for f in merged if path and (f.get("fix") or {}).get("ownership") != "accepted"
-                         and any(isinstance(w, dict) and str(w.get("sc")) == str(n.get("sc")) for w in f.get("wcag") or [])
-                         and any(isinstance(e, dict) and str(e.get("file") or "").removeprefix("./") == path for e in f.get("evidence") or [])]
+                         and cites(f, n.get("sc"), path)]
     unfiled = [n for n in cross_notes if not n["filed_as"]]
+
+    # The maximizer runs after the lenses and is told to file only what no lens can see. A finding of its own on a
+    # criterion and in a file that another finding already has is, as a rule, that finding filed a second time.
+    for f in merged:
+        if not from_maximizer(f):
+            continue
+        spots = {(str(w.get("sc")), str(e.get("file")).removeprefix("./")) for w in f.get("wcag") or [] if isinstance(w, dict)
+                 for e in f.get("evidence") or [] if isinstance(e, dict) and e.get("file")}
+        twins = sorted({o["id"] for o in merged if not from_maximizer(o) and (o.get("fix") or {}).get("ownership") != "accepted"
+                        and any(cites(o, sc, path) for sc, path in spots)})
+        if twins:
+            problems.append(f"{f['id']}: the framework-maximizer filed a finding on a criterion and in a file that {', '.join(twins)} "
+                            f"already has. If it is the same problem, name it a duplicate in _dedupe.json, or make it a leverage entry "
+                            f"(\"kind\": \"leverage\", leverage.finding_ids) when it is the one place that fixes it; if it is "
+                            f"another problem, move it to findings/orchestrator.json under an ORC id and take it out of the maximizer's file")
+
+    # A lens that read only the code while the app was running left out what only the running app answers.
+    static_only = []
+    if (ws / "automated" / "summary.json").is_file():
+        for ag, d in agents.items():
+            cov = d.get("coverage") if isinstance(d.get("coverage"), dict) else {}
+            how = str(cov.get("method") or "").strip().lower()
+            mine = sorted(RUNTIME_LENSES & set(d.get("lenses") or [ag]))
+            if mine and "runtime" not in how and how != "both":            # agents also write "static + runtime"
+                static_only.append({"agent": ag, "lenses": mine, "method": how or None})
     exceptions = [{"id": f["id"], "title": f.get("title"), **(f.get("fix", {}).get("exception") or {}),
                    "reason": (f.get("fix", {}).get("exception") or {}).get("reason") or f.get("fix", {}).get("summary")}
                   for f in merged if f.get("fix", {}).get("ownership") == "accepted"]
     out = {"findings": merged, "leverage_entries": leverage_entries, "root_cause_clusters": cand, "problems": problems, "notes": problems.notes,
-           "cross_lens_notes": cross_notes, "accepted_exceptions": exceptions,
+           "cross_lens_notes": cross_notes, "static_only_lenses": static_only, "accepted_exceptions": exceptions,
            "key_flow_failures": flow_failures, "severity_upgrades": severity_upgrades,
            "positives": {ag: d.get("positives", []) for ag, d in agents.items()},
            "coverage": {r[0]: {"status": r[4], "findings": r[5].split(", ") if r[5] else [], "owner": r[3]} for r in cov_rows},
@@ -843,6 +883,11 @@ def main():
     if len(unfiled) < len(cross_notes):
         lines += ["", f"{len(cross_notes) - len(unfiled)} more cross-lens notes are covered: a finding cites the same criterion in the same file "
                       "(`filed_as` in `_merged.json`)."]
+    if static_only:
+        lines += ["", f"## Worked from the code only, with a runtime there ({len(static_only)})", "",
+                  "The scan ran, so the app was running. Each of these has a \"With a runtime\" list in its lens file: checks that "
+                  "reading code does not answer. Send the agent back once for those, unless agents have no browser tool.", ""]
+        lines += [f"- {s['agent']} ({', '.join(s['lenses'])}): coverage.method is {s['method'] or 'not given'}" for s in static_only]
     if exceptions:
         lines += ["", "## Accepted exceptions (ownership: accepted)", ""]
         lines += [f"- {e['id']} · {e.get('tool', '')} {e.get('rule', '')} {e.get('selector', '')} · {e.get('reason', '')}".replace("  ", " ") for e in exceptions]
@@ -865,7 +910,8 @@ def main():
 
     print(f"{len(all_findings)} raw findings from {len(agents)} agents (+{len(persona_findings)} from personas) → {len(merged)} merged; "
           f"{len(cand)} root-cause clusters; coverage {dict(counts)}; {len(conflicts)} conflicts; {len(problems)} problems to resolve, {len(problems.notes)} settled by the merge"
-          + (f"; {len(unfiled)} cross-lens notes nobody filed" if unfiled else ""))
+          + (f"; {len(unfiled)} cross-lens notes nobody filed" if unfiled else "")
+          + (f"; {len(static_only)} lenses static-only with a runtime there" if static_only else ""))
     all_users = [f["id"] for f in merged if f.get("affects_all_users")]
     if all_users:
         print("affects all users: " + ", ".join(all_users))

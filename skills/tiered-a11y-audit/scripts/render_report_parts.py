@@ -473,7 +473,7 @@ def main():
     if lev:
         d += [Gap("advice-intro", "one introductory paragraph for the table of places that resolve several findings at once"), t["ann_advice"].format(n=len(lev)), "",
               "| " + " | ".join(t["adv_cols"]) + " |", "|---|---|---|---|"]
-        d += [f"| {clip(cell(e.get('location') or e.get('title')), 60)} | {', '.join(sorted({src_to_rep.get(s, s) for s in e.get('resolves') or []}))} | "
+        d += [f"| {clip(cell(e.get('location') or e.get('title')), 60)} | {', '.join(sorted({src_to_rep.get(s, s) for s in e.get('resolves') or []})) or t['none']} | "
               f"{t['effort_unit'].get(e.get('effort'), e.get('effort') or '?')} | {clip(cell(e.get('note') or t['none']), 90)} |" for e in lev]
     else:
         d.append(t["no_advice"])

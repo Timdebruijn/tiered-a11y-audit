@@ -359,6 +359,16 @@ def test_a_cell_is_never_cut_inside_a_code_span():
     assert {rule for _, rule, _ in lint(draft, ids)} == {"unwritten"}, lint(draft, ids)
 
 
+def test_a_proposal_that_resolves_no_finding_yet_says_none():
+    lint_layer = finding("FWK-001", kind="leverage", wcag=[], title="No lint layer", leverage={"finding_ids": [], "note": "Keeps a fixed finding from coming back."},
+                         fix={"ownership": "project", "summary": "Add a lint step.", "location": "`package.json`"})
+    _, draft, ids = run([finding("KBD-001"), lint_layer])
+    row = next(l for l in draft.splitlines() if l.startswith("| `package.json`"))
+    assert [c.strip() for c in row.split("|")[1:-1]][1] == "none", row          # an empty cell is what the linter refuses
+    assert "FWK-001" not in ids.values() and "No lint layer" not in draft.split("## Structural advice")[0], "a proposal is not a finding"
+    assert {rule for _, rule, _ in lint(draft, ids)} == {"unwritten"}, lint(draft, ids)
+
+
 def test_a_finding_is_named_by_the_id_the_report_gives_it():
     persona = PERSONA.replace("| KBD-001 |", "| Stuck, see PER-screen-reader-001 and KBD-002 |").replace("1. The button.", "1. The button of PER-screen-reader-001.")
     cov = {"lenses": ["keyboard-focus"], "sc_coverage": {"2.1.2": {"status": "pass", "note": "Other than KBD-002."}}}
