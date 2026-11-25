@@ -226,21 +226,24 @@ def test_phase_5_wants_the_personas_of_the_mode_and_a_merge_after_them():
     one(ws, "5", "no persona report from motor-voice-user, cognitive-user")
 
 
-def test_phase_5_wants_the_personas_the_profile_selects():
+def test_phase_5_wants_the_personas_the_briefs_were_built_for():
     ws = workspace()
     through_phase_3(ws)
-    profile = ws / "stack-profile.md"
-    profile.write_text(profile.read_text(encoding="utf-8") + "\n## Persona selection\n- Core: screen-reader, low-vision\n"
-                       "- Added: colour-blind because the charts carry meaning\n", encoding="utf-8")
-    script("build_briefs.py", HERE.parent, ws, "--mini")
+    script("build_briefs.py", HERE.parent, ws, "--mini", "--personas", "screen-reader,low-vision,colour-blind")
     through_phase_4(ws)
     through_phase_5(ws)                                                        # the two a mini audit used to be held to
     got = gaps(ws, "5")
-    assert len(got) == 1 and got[0].startswith("no persona report from colour-blind-user in personas/: the stack profile selects them"), got
+    assert len(got) == 1 and got[0].startswith("no persona report from colour-blind-user in personas/: build_briefs.py was run with --personas"), got
     (ws / "personas" / "colour-blind-user.md").write_text("# colour-blind-user\n\nWalked the key flows.\n", encoding="utf-8")
     merge(ws)
     assert gaps(ws, "5") == [], gaps(ws, "5")
     assert not (ws / "briefs" / "deaf-user.md").exists() and gaps(ws, "3") == [], gaps(ws, "3")   # phase 3 asks for no brief that was not built
+
+    # whoever has to build again is told the flags of the run, so that the selection is not lost on the way
+    profile, built = ws / "stack-profile.md", ws / "briefs" / "_agents.json"
+    os.utime(built, ns=(built.stat().st_atime_ns, profile.stat().st_mtime_ns - 2_000_000_000))
+    got = [g for g in gaps(ws, "4") if "build_briefs.py again" in g]
+    assert len(got) == 1 and "with the flags it was run with (--mini --personas screen-reader,low-vision,colour-blind)" in got[0], got
 
 
 def test_phase_6_wants_a_current_draft_and_a_report_that_passes_the_linter():

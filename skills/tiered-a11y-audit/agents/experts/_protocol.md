@@ -52,7 +52,7 @@ Write your prose in the report language named in the stack profile: titles, desc
 - **2.2.1 Timing Adjustable** is for time limits (sessions, timed input); content that moves, blinks or auto-updates is 2.2.2.
 - **1.1.1 Non-text Content** covers `<canvas>` and `<svg>` charts, image buttons and icon fonts; 4.1.2 covers the name/role of *controls*. A chart without a text alternative is 1.1.1, a chart's unnamed zoom button is 4.1.2.
 - **1.3.1 Info and Relationships** is not a catch-all. Use it for structure that is visual-only (headings, lists, tables, groups, label association), not for everything semantic.
-- **2.5.3 Label in Name** needs visible text that is absent from the accessible name — see the false-positive list above.
+- **2.5.3 Label in Name** needs visible text that is absent from the accessible name. Many controls with the same name are a matter of context (2.4.6, 4.1.2), not of this criterion.
 
 ## Fix ownership
 

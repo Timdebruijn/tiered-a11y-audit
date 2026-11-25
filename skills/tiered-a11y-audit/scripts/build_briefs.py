@@ -38,26 +38,27 @@ PERSONAS = ["screen-reader-user", "low-vision-user", "motor-voice-user", "cognit
 PERSONA_SKIPS_IN_TIERING = ("## Fix ownership (independent of tier and severity)",)
 
 
-def selected_personas(profile: str) -> list:
-    """The personas the stack profile selects, in the fixed order, or [] when it does not say.
+CORE = PERSONAS[:4]
 
-    Read from the "Persona selection" section, as the template writes it: "- Core: screen-reader, low-vision" and
-    "- Added: colour-blind because the charts carry meaning". A persona is selected when an item of such a list is
-    its name and nothing else, so a sentence that mentions one ("nothing here is a vestibular trigger") selects
-    nobody; what is left of the template's own placeholders, in angle brackets or in parentheses, is not read.
-    ponytail: a name wrapped in other words ("our usual colour-blind tester") is not seen. The build prints who it
-    selected, and that line is where a missing persona shows."""
-    section = re.search(r"(?ms)^## Persona selection[^\n]*\n(.*?)(?=^## |\Z)", profile)
-    if not section:
-        return []
-    items = set()
-    for line in section.group(1).splitlines():
-        line = re.sub(r"<[^>]*>|\([^)]*\)", " ", line).split(":", 1)[-1]
-        for chunk in line.split(";"):
-            for item in re.split(r",|\band\b|\bplus\b|[+&/|]", re.split(r"\bbecause\b", chunk, flags=re.I)[0], flags=re.I):
-                items.add(re.sub(r"^(the|a)\s+|[\s-]+(users?|personas?)$", "", item.strip(" \t-*•.").lower()).strip())
-    word = lambda p: re.escape(p[:-len("-user")]).replace(r"\-", "[- ]?").replace("colour", "colou?r")
-    return [p for p in PERSONAS if any(re.fullmatch(word(p), i) for i in items)]
+
+def chosen_personas(given, mode: str) -> list:
+    """The personas of --personas in the fixed order, or the reason, as text, why that list cannot be a run.
+
+    The orchestrator names them, as it names the playbook sections: reading them out of the profile's prose selected
+    too few without anyone noticing. A list that would run fewer personas than the mode asks for is refused here,
+    because the phase check takes the list for what must report."""
+    short = {p[:-len("-user")]: p for p in PERSONAS}
+    names = [n.strip().lower() for n in given.split(",") if n.strip()]
+    unknown = [n for n in names if n not in short and n not in PERSONAS]
+    if unknown or not names:
+        return f"--personas takes names from {', '.join(short)}; not {', '.join(unknown) or 'an empty list'}"
+    picked = [p for p in PERSONAS if p in names or p[:-len("-user")] in names]
+    if mode == "mini" and ("screen-reader-user" not in picked or len(picked) < 2):
+        return "a mini audit runs the screen reader persona plus at least one other: --personas screen-reader,low-vision or screen-reader,motor-voice"
+    missing = [p[:-len("-user")] for p in CORE if p not in picked]
+    if mode != "mini" and missing:
+        return f"a full or lean audit runs the four core personas and adds others on their trigger; --personas leaves out {', '.join(missing)}"
+    return picked
 
 
 def playbook_sections(text: str, wanted):
@@ -174,7 +175,8 @@ def skeleton(brief: str, lenses: list, owners: dict) -> str:
 
 
 def only_section(text: str, heading: str, source: str) -> str:
-    """One section of a document: its heading line and everything up to the next heading of the same level."""
+    """One section of a document: its heading line and everything up to the next heading of the same level.
+    ponytail: a "## " line inside a code block would end it early; the section it is used for holds no code block."""
     found = re.findall(rf"(?ms)^{re.escape(heading)}\n.*?(?=^## |\Z)", text)
     if len(found) != 1:
         sys.exit(f"build_briefs: {source} has {len(found)} sections {heading!r}, expected one; it was renamed, removed or repeated, update build_briefs.py")
@@ -188,8 +190,14 @@ def main():
     ap.add_argument("--playbook", default="1", help="comma-separated section numbers of framework-playbooks.md")
     ap.add_argument("--lean", action="store_true")
     ap.add_argument("--mini", action="store_true", help="two merged expert agents (perceive / operate)")
+    ap.add_argument("--personas", help="comma-separated personas that run, as selected in the stack profile (screen-reader,low-vision,...); "
+                                       "without it a brief is written for all eight")
     a = ap.parse_args()
     sd, ws = Path(a.skill_dir), Path(a.workspace)
+    mode = "mini" if a.mini else "lean" if a.lean else "full"
+    picked = chosen_personas(a.personas, mode) if a.personas is not None else []
+    if isinstance(picked, str):
+        sys.exit("build_briefs: " + picked)
     rd = lambda p: p.read_text(encoding="utf-8")
     refs = sd / "references"
     schema, ownership = rd(refs / "finding-schema.md"), rd(refs / "wcag-ownership.md")
@@ -236,22 +244,23 @@ def main():
         "# Briefing: framework-maximizer", expert_proto, rd(sd / "agents" / "experts" / "framework-maximizer.md"),
         schema, tiering, own_rows(ownership, [], owners), "# Stack profile\n\n" + profile + extras, "# Framework playbook (relevant sections)\n\n" + pb],
         ["framework-maximizer"]), encoding="utf-8")
-    # Which personas run was decided in the profile. A brief for one that does not run is a file somebody may spawn.
-    picked = selected_personas(profile)
-    personas = picked or PERSONAS
+    # A brief for a persona that does not run is a file somebody may spawn.
+    personas, removed = picked or PERSONAS, []
     for p in PERSONAS:
         if p not in personas:
-            (out / f"{p}.md").unlink(missing_ok=True)           # left by an earlier build with a wider selection
+            if (out / f"{p}.md").exists():                      # left by an earlier build with a wider selection
+                (out / f"{p}.md").unlink()
+                removed.append(p)
             continue
         (out / f"{p}.md").write_text("\n\n---\n\n".join([
             f"# Briefing: {p}", persona_proto, rd(sd / "agents" / "personas" / f"{p}.md"), persona_schema, persona_tiering, misapplied,
             "# Stack profile\n\n" + profile + extras]), encoding="utf-8")
-    (out / "_agents.json").write_text(json.dumps({"mode": "mini" if a.mini else "lean" if a.lean else "full", "experts": agents,
-                                                  "maximizer": "framework-maximizer", "personas": personas,
-                                                  "personas_selected": bool(picked)}, indent=2), encoding="utf-8")
+    # the flags go into the manifest so that whoever builds again, after a change to the profile, builds the same run
+    (out / "_agents.json").write_text(json.dumps({"mode": mode, "experts": agents, "maximizer": "framework-maximizer", "personas": personas,
+                                                  "personas_selected": bool(picked), "flags": sys.argv[3:]}, indent=2), encoding="utf-8")
     print(f"briefs written to {out} ({len(agents)} expert, 1 maximizer, {len(personas)} persona); playbook sections {sorted(wanted)}")
-    print("personas, as the stack profile selects them: " + ", ".join(personas) if picked else
-          "the stack profile has no persona selection that names one: a brief for each of the eight")
+    print("personas: " + ", ".join(personas) + ("" if picked else " (no --personas given: a brief for each of the eight; name the ones the profile selects)")
+          + (f"; removed the brief of {', '.join(removed)}" if removed else ""))
     return 0
 
 
