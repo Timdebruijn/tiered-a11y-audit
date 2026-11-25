@@ -27,7 +27,7 @@ The value of this skill comes from two things a generic audit misses, so protect
 - **Be honest about method.** State what was tested statically, what at runtime, what automatically, and what not at all. Personas are simulations by an AI, not a substitute for testing with disabled people; say so in the report and recommend real user testing in tier 3.
 - **Never recommend accessibility overlay widgets** (toolbars/plugins that claim to "fix" a site automatically). They do not achieve conformance and often make AT use worse.
 - **Report language** = the language the user is talking to you in. Code, selectors and WCAG references stay as-is. Agents write their prose in that language from the start (it is in the stack profile), so nothing has to be translated afterwards; what scripts read (IDs, fingerprints, enumerated values, the section headings and task scores in persona files) stays in English. The same holds for what you file yourself in `findings/orchestrator.json`.
-- **The runtime is read-only too.** Agents navigate, open and type, but never submit, create, delete or change data — unless the user explicitly offers a disposable instance and says which actions are fine. Put that in every subagent prompt.
+- **The runtime is read-only too.** Agents navigate, open and type where their protocol shows it changes nothing but the view, and never submit, create, delete or change data — unless the user explicitly offers a disposable instance and says which actions are fine. Put that in every subagent prompt.
 
 ## Scripts do the deterministic work
 
@@ -215,8 +215,8 @@ schema, tiering, ownership, the stack profile (runtime URL, browser tool, scratc
 skill dir, writable directories, key flows) and the relevant playbook sections.
 Then start from "<repo>/.a11y-audit/pattern-inventory.md", "aria-digest.md" and
 "colour-pairs.md" as your protocol says; grep only for what they don't cover.
-Rules: repo READ-ONLY (no edits, no state-changing git); runtime READ-ONLY (navigate,
-open, type; never submit/create/delete) <unless: disposable instance, allowed: …>;
+Rules: repo READ-ONLY (no edits, no state-changing git); runtime READ-ONLY (press, change
+or type only where your protocol says it is safe; never submit/create/delete) <unless: disposable instance, allowed: …>;
 helper scripts only inside the scratch dir named in the profile (Node resolves
 imports from the script's own directory); don't npm install. Write prose in <report language>;
 keep IDs and the schema's fixed values as they are.
